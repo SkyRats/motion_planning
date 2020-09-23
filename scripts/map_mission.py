@@ -4,6 +4,7 @@ import ros_numpy
 from MAV import MAV
 from nav_msgs.msg import OccupancyGrid
 from geometry_msgs.msg import PoseStamped
+import matplotlib.pyplot as plt
 from sensor_msgs.msg import LaserScan
 import math
 
@@ -301,6 +302,21 @@ def run():
         checkpoint = checkpoint_selection(checkpoints)
         if checkpoint == []:
             print("mapping complete :)")
+            matrix = []
+            for i in range(301):
+                matrix.append([])
+                for j in range(301):
+                    try:
+                        type(obstacles[301*i + j]) == int
+                    except KeyError:
+                        obstacles[301*i + j] = 0
+                    if type(obstacles[301*i + j]) != int:
+                        obstacles[301*i + j] = 0
+                    matrix[i].append(obstacles[301*i + j])
+            final_plot = np.array(matrix)
+            print(final_plot.shape)
+            plt.imshow(final_plot, cmap='hot', interpolation='nearest')
+            plt.show()
             mav.land()
         #"""
         #"""
