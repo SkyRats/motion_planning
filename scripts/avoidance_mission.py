@@ -9,37 +9,16 @@ laser_data = LaserScan()
 MAX_VEL = 2
 MASK_VELOCITY = 0b0000011111000111
 
-LINEARITY_THRESHOLD = 1
+LINEARITY_THRESHOLD = 0.3
 
 # Cylinder detection parameters
-r = 25     #[cm] - Raio dos cilindros (Especificado no edital)
-d_min = 10 #[cm] - Distancia minima permitida pro Drone chegar perto de algo 
+r = 0.25     #[m] - Raio dos cilindros (Especificado no edital)
+d_min = 0.4  #[m] - Distancia minima permitida pro Drone chegar perto de algo 
 
 def laser_callback(data):
     global laser_data
     laser_data = data
  
-def linearity_check(obj, indices, res):
-    indices = [i for i in range(indices[0], indices[-1] + 1)]
-
-    if len(obj) % 2 == 0:
-        before_middle =  len(obj)//2 - 1 
-        d = (obj[ before_middle ] + obj[ before_middle + 1 ] )/2
-
-        indices.insert( before_middle + 1, indices[ before_middle ] + 0.5 )
-        obj.insert(before_middle + 1, d*np.cos(res/2) )
-
-    index_min = len(obj)//2
-    dist_min = obj[index_min]
-
-    d0_estimated = dist_min/np.cos( (index_min - indices[0])*res )
-    d1_estimated = dist_min/np.cos( (index_min - indices[-1])*res )
-
-    max_diff = max( obj[0] - d0_estimated, obj[-1], d1_estimated )
-    if max_diff > LINEARITY_THRESHOLD:
-        return False
-    return True
-
 def clear_cylinder(dist, index):
     temp = []   
     indices_temp = []
@@ -57,13 +36,12 @@ def detect_cylinders():
     
     objetos = []    # A lista de objetos que v o ser devolvidas
     sensor = np.array(laser_data.ranges)
-
     res = len(sensor)
-
     sensor = np.where(sensor == np.Inf, 0, sensor)
-        
+    
     dists = sensor[sensor > 0]    # Lista ignorando os zeros
-    indices = [ i for i in range(res) if sensor[i] != 0 ] # Correspondencia entre indices do array sem zeros e do scan do lidar
+    indices = [ i for i in range(res) if sensor[i] > 0 ] # Correspondencia entre indices do array sem zeros e do scan do lidar
+        
     temp = []   # Lista temporaria pra guardar os objetos que v o ser inseridos em "objetos"
     obj_indices = []    # Lista dos indices da lista "dists" que representam os cilindros
     indices_temp = []   # Armazena os indices que vao ser colocados em "obj_indices"
@@ -77,23 +55,21 @@ def detect_cylinders():
         while i < len(dists):
 
             # V  se o pr ximo elemento da lista tem uma variacao "permitida" de acordo com a f rmula
-            if (abs(dists[i] - dists[i-1]) <= var_max): 
+            if abs(dists[i] - dists[i-1]) <= var_max and abs(indices[i] - indices[i-1]) == 1:
                 temp.append(dists[i])
 
             # Se o proximo elemento nao for mais um objeto de acordo com var_max, o codigo analisa o tamanho do objeto e faz a propor o pra ver se pode ser um cilindro
             # Nesse caso, seria chao, entao reinicializa as listas temporarias
-            elif ((len(temp)/res) > prop_max):
-                (temp, indices_temp) = clear_cylinder(dists[i], indices[i])   # indices[i] correponde ao indice "real" do item i da lista n o nula
-
-            else:   # Se nenhum dos de cima, entao   um cilindro. Ai o codigo bota nas listas "objetos" e "obj_indices" e reinicializa os temporarios
-                indices_temp.append( indices[i-1] )
+            else:
                 
-                if not linearity_check(temp, indices_temp, res):
+                if 0 < len(temp) < prop_max*res:   # Se nenhum dos de cima, entao   um cilindro. Ai o codigo bota nas listas "objetos" e "obj_indices" e reinicializa os temporarios
+                    indices_temp.append( indices[i-1] )
+                    
                     objetos.append(temp)
                     obj_indices.append( indices_temp )
 
                 (temp, indices_temp) = clear_cylinder(dists[i], indices[i])
-
+            
             i += 1
 
         # Confere se existe um elemento que passa pela "quebra" do lidar
@@ -101,17 +77,21 @@ def detect_cylinders():
         if sensor[-1] != 0 and indices[0] == 0:
             
             # Roda pela lista de objetos nao nulos de novo, ate que a distancia entre eles indique que o objeto acabou
-            
-            while abs(dists[i% len(dists) ] - dists[ (i-1) % len(dists) ]) <= var_max and i < 2*len(dists):
-                temp.append(dists[i% len(dists) ])
-                i += 1
-                print(i)
-            if len(temp)/res < prop_max:
-                indices_temp.append( indices[(i-1) % len(dists)] )
+            previous_i = i % len(dists)
+            current_i = (i-1) % len(dists)
+
+            while abs(dists[previous_i ] - dists[ current_i ]) <= var_max and i < 2*len(dists) and abs(indices[previous_i] - indices[current_i]) == 1:
+                temp.append(dists[previous_i ])
                 
-                if not linearity_check(temp, indices_temp, res):
-                    objetos.append(temp)
-                    obj_indices.append( indices_temp )
+                i += 1
+                previous_i = i % len(dists)
+                current_i = (i-1) % len(dists)
+            
+            if 0 < len(temp) < prop_max*res:
+                indices_temp.append( indices[current_i] )
+                
+                objetos.append(temp)
+                obj_indices.append( indices_temp )
 
             """
             Se o objeto na fronteira for valido, entao esse objeto foi quebrado em 2, sendo capturado pela primeira passagem,
@@ -121,17 +101,17 @@ def detect_cylinders():
             Assim, so precisamos conferir se o objeto e tao grande que ele nem foi detectado na primeira passagem 
             """
 
-            print(obj_indices)
-            print(indices[(i-1) % len(dists)])
-            if  obj_indices[0][0] < indices[(i-1) % len(dists)] < obj_indices[0][1]:
+            if obj_indices and obj_indices[0][0] < indices[current_i] < obj_indices[0][1]:
                 del objetos[0]
                 del obj_indices[0]
 
         # Se chega so final da lista com um objeto valido armazenado, salva ele na lista
-        elif len(temp) > 0 and len(temp)/res < prop_max:
-            objetos.append(temp)
+        elif 0 < len(temp) < prop_max*res:
+                        
             indices_temp.append( indices[i-1] )
+            
             obj_indices.append(indices_temp)
+            objetos.append(temp)
                     
     return objetos, obj_indices
 
@@ -144,12 +124,11 @@ def saturate(vector):
 def normal_dist(mean, variance, x):
     return (1/((variance*2*np.pi)**0.5))*np.exp((x-mean)/variance**0.5)
 
-
 def run():
     rospy.init_node("avoidance")
     laser_sub = rospy.Subscriber("/laser/scan", LaserScan, laser_callback, queue_size=1)
     mav = MAV("1")
-    goal = np.array([8, 0])
+    goal = np.array([0, 0])
     initial_height = 1.5
     mav.takeoff(initial_height)
 
@@ -198,30 +177,25 @@ def run():
                 theta_goal = -1*np.arctan(abs(deltaY/deltaX))
         ##################################################################################
         
-        theta = laser_data.angle_min
         Ft = np.array([0.0, 0.0])
         Fg = np.array([Ka*d*np.cos(theta_goal),
-                                    Ka*d*np.sin(theta_goal)])
-        
-        epsilon = 0.1
+                                    Ka*d*np.sin(theta_goal)])            
 
         objects, objects_indices = detect_cylinders()
-        
-        rospy.loginfo( np.array(objects).shape )
-        
+
         for i in range(len(objects)):
             middle = (objects_indices[i][0] + objects_indices[i][-1])/2 + 1
-            theta = middle*laser_data.angle_increment
+            theta = (middle*laser_data.angle_increment) % 2*np.pi
             laser_range = laser_data.ranges[ int(middle) ]  
             
-            Fi = Kr * ((a/((laser_range**b + epsilon)*c)) + d*(laser_range-1.5) - 0.2)
+            Fi = Kr * ((a/((laser_range**b)*c)) + d*(laser_range-1.5) - 0.2)
             Fix = -Fi*np.cos(theta + mav.drone_pose.pose.orientation.z)
             Fiy = -Fi*np.sin(theta + mav.drone_pose.pose.orientation.z)
             Ft += np.array([Fix, Fiy])
 
         Fg = saturate(Fg)
         F = Ft + Fg
-        # rospy.loginfo("Attraction = {}; Repulsion = {}".format(Fg, Ft))
+        #rospy.loginfo("Attraction = {}; Repulsion = {}".format(Fg, Ft))
         mav.set_position_target(type_mask=MASK_VELOCITY,
                                 x_velocity=F[0],
                                 y_velocity=F[1],
