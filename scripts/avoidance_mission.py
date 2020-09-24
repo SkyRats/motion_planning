@@ -9,11 +9,9 @@ laser_data = LaserScan()
 MAX_VEL = 2
 MASK_VELOCITY = 0b0000011111000111
 
-LINEARITY_THRESHOLD = 0.3
-
 # Cylinder detection parameters
 r = 0.25     #[m] - Raio dos cilindros (Especificado no edital)
-d_min = 0.4  #[m] - Distancia minima permitida pro Drone chegar perto de algo 
+d_min = 0.15  #[m] - Distancia minima permitida pro Drone chegar perto de algo 
 
 def laser_callback(data):
     global laser_data
@@ -128,31 +126,26 @@ def run():
     rospy.init_node("avoidance")
     laser_sub = rospy.Subscriber("/laser/scan", LaserScan, laser_callback, queue_size=1)
     mav = MAV("1")
-    goal = np.array([0, 0])
+    goal = np.array([8, 0])
     initial_height = 1.5
     mav.takeoff(initial_height)
 
-    a=0.004
-    b=0.9
-    c=0.01
-    d=-0.5
+    a = 0.3 #0.65
+    b = 0.4
 
-    Kr = -4 # repulsive
-    Ka = 0.5 # attractive
+    Kr = 0.95 # repulsive
+    Ka = 6 # attractive
     Kz = 0.5 # height proportional control
-    Ky = -0.5 # yaw proportional control
     mean = 0
     variance = 1.2
     d = (mav.drone_pose.pose.position.x - goal[0])**2 + (mav.drone_pose.pose.position.y - goal[1])**2
     d = np.sqrt(d)
-    
         
     while not rospy.is_shutdown() and d > 0.3:
         d = (mav.drone_pose.pose.position.x - goal[0])**2 + (mav.drone_pose.pose.position.y - goal[1])**2
         d = np.sqrt(d)
         
-        euler_orientation = euler_from_quaternion(ros_numpy.numpify(mav.drone_pose.pose.orientation))
-        ########################theta_goal global###################################
+        ###################################theta_goal global###################################
         deltaY = goal[1] - mav.drone_pose.pose.position.y
         deltaX = goal[0] - mav.drone_pose.pose.position.x
         if deltaY > 0 and deltaX >= 0:
@@ -184,13 +177,16 @@ def run():
         objects, objects_indices = detect_cylinders()
 
         for i in range(len(objects)):
-            middle = (objects_indices[i][0] + objects_indices[i][-1])/2 + 1
-            theta = (middle*laser_data.angle_increment) % 2*np.pi
-            laser_range = laser_data.ranges[ int(middle) ]  
+            theta = laser_data.angle_min
+            middle = (objects_indices[i][0] + objects_indices[i][1])/2 + 1
+            theta += (middle*laser_data.angle_increment)
+            laser_range = laser_data.ranges[ int(middle) ]
+
+            rospy.loginfo(theta)  
             
-            Fi = Kr * ((a/((laser_range**b)*c)) + d*(laser_range-1.5) - 0.2)
-            Fix = -Fi*np.cos(theta + mav.drone_pose.pose.orientation.z)
-            Fiy = -Fi*np.sin(theta + mav.drone_pose.pose.orientation.z)
+            Fi = Kr * a/(laser_range - b)
+            Fix = -Fi*np.cos(theta)
+            Fiy = -Fi*np.sin(theta)
             Ft += np.array([Fix, Fiy])
 
         Fg = saturate(Fg)
@@ -199,8 +195,8 @@ def run():
         mav.set_position_target(type_mask=MASK_VELOCITY,
                                 x_velocity=F[0],
                                 y_velocity=F[1],
-                                z_velocity=Kz*(initial_height - mav.drone_pose.pose.position.z),
-                                yaw_rate= 3)
+                                z_velocity=Kz*(initial_height - mav.drone_pose.pose.position.z)
+                                )
                                 
     mav.land()
 
