@@ -126,15 +126,16 @@ def run():
     rospy.init_node("avoidance")
     laser_sub = rospy.Subscriber("/laser/scan", LaserScan, laser_callback, queue_size=1)
     mav = MAV("1")
-    goal = np.array([8, 0])
+    goal = np.array([0, 0])
     initial_height = 1.5
     mav.takeoff(initial_height)
 
-    a = 0.3 #0.65
-    b = 0.4
+    a = 0.7 #0.65
+    b = 0.6
+    c = 0.3
 
-    Kr = 0.95 # repulsive
-    Ka = 6 # attractive
+    Kr = 0.9 # repulsive
+    Ka = 4 # attractive
     Kz = 0.5 # height proportional control
     mean = 0
     variance = 1.2
@@ -184,7 +185,7 @@ def run():
 
             rospy.loginfo(theta)  
             
-            Fi = Kr * a/(laser_range - b)
+            Fi = Kr * a/(laser_range - b) + c
             Fix = -Fi*np.cos(theta)
             Fiy = -Fi*np.sin(theta)
             Ft += np.array([Fix, Fiy])
