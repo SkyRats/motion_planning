@@ -13,6 +13,7 @@ pose_data = PoseStamped()
 laser_data = LaserScan()
 markers = {}
 obstacles = {}
+sweep_paint = {}
 
 def map_callback(data):
     global map_data
@@ -128,8 +129,8 @@ def checkpoint_selection(checkpoints):
 def WFD():
     markers = {}
     Frontiers = []
-    r = 0.7 #####RAIO DO DRONE#######
-    n = int(r/map_data.info.resolution)
+    r = 0.3 #####RAIO DO DRONE#######
+    n = int((r + 0.4)/map_data.info.resolution)
     queuem = []
     initial = map_pose(pose_data.pose.position.x, pose_data.pose.position.y)
     enqueue(queuem, initial)
@@ -266,31 +267,34 @@ def WFD():
 
 
 
-def reconstruct_path(camefrom, current):
+def reconstruct_path(camefrom, current,n):
     total_path = []
     total_path.append (current)
     while camefrom.has_key(current):
         current = camefrom[current]
         total_path.append(current)
+    for i in range(n):
+        total_path.pop(0)
     return total_path
 
+def paint(width,height):
+    pose = map_pose(pose_data.pose.position.x,pose_data.pose.position.y)
+    for i in range(height):
+        line = ((i+1) - int((height/2)+1))*width
+        for k in range(width):
+            column = ((k+1) - int((width/2)+1))
+            sweep_paint[pose + line + column] = 1
 
 def run():
-    rospy.init_node("mapping")
-    #"""
     mav = MAV("1")
-    initial_height = 1
-    mav.takeoff(initial_height)
-    #"""
     MASK_VELOCITY = 0b0000011111000111
-    map_sub = rospy.Subscriber("/map", OccupancyGrid, map_callback, queue_size=1)
-    pose_sub = rospy.Subscriber("/slam_out_pose", PoseStamped, pose_callback, queue_size=1)
-    laser_sub = rospy.Subscriber("/laser/scan", LaserScan, laser_callback, queue_size=1)
-    rospy.wait_for_message("/map", OccupancyGrid)
-    rospy.wait_for_message("/slam_out_pose", PoseStamped)
-    
+    initial_height = 1
 
+    r = 0.3 #####RAIO DO DRONE#######
+    n = int((r + 0.1)/map_data.info.resolution)
     while not rospy.is_shutdown(): 
+        mav.set_position_target(type_mask=MASK_VELOCITY,x_velocity=0,y_velocity=0,z_velocity=initial_height - mav.drone_pose.pose.position.z,yaw_rate=-pose_data.pose.orientation.z)
+        #stopping the drone
         frontiers = []
         checkpoints = []
         trajectory = WFD()
@@ -300,19 +304,19 @@ def run():
                 frontier = sorted(frontier)
                 checkpoints.append(frontier[int(len(frontier)/2)])
         checkpoint = checkpoint_selection(checkpoints)
-        if checkpoint == []:
+        if checkpoint == [] and map_pose(pose_data.pose.position.x,pose_data.pose.position.y) != -1:
             print("mapping complete :)")
             matrix = []
             for i in range(301):
                 matrix.append([])
                 for j in range(301):
                     try:
-                        type(obstacles[301*i + j]) == int
+                        type(sweep_paint[301*i + j]) == int
                     except KeyError:
-                        obstacles[301*i + j] = 0
-                    if type(obstacles[301*i + j]) != int:
-                        obstacles[301*i + j] = 0
-                    matrix[i].append(obstacles[301*i + j])
+                        sweep_paint[301*i + j] = 0
+                    if type(sweep_paint[301*i + j]) != int:
+                        sweep_paint[301*i + j] = 0
+                    matrix[i].append(sweep_paint[301*i + j])
             final_plot = np.array(matrix)
             print(final_plot.shape)
             plt.imshow(final_plot, cmap='hot', interpolation='nearest')
@@ -320,7 +324,7 @@ def run():
             mav.land()
         #"""
         #"""
-        path = reconstruct_path(trajectory[1], checkpoint)
+        path = reconstruct_path(trajectory[1], checkpoint,n)
         path.reverse()
         print("Success, going towards goal")
         for point in path:
@@ -328,34 +332,46 @@ def run():
             while distance(pose_data.pose.position.x, pose_data.pose.position.y, cartesian_pose(point)[0], cartesian_pose(point)[1]) > 0.2 :
                 if rospy.is_shutdown():
                     break
-                
+
                 if cartesian_pose(point)[0] - pose_data.pose.position.x < 0:
                     vel_x = cartesian_pose(point)[0] - pose_data.pose.position.x
-                    if vel_x < -0.3: 
-                        vel_x = -0.3
+                    if vel_x < -0.4: 
+                        vel_x = -0.4
                 elif cartesian_pose(point)[0] - pose_data.pose.position.x > 0:
                     vel_x = cartesian_pose(point)[0] - pose_data.pose.position.x
-                    if vel_x > 0.3:
-                        vel_x = 0.3
+                    if vel_x > 0.4:
+                        vel_x = 0.4
                 
                 if cartesian_pose(point)[1] - pose_data.pose.position.y < 0:
                     vel_y = cartesian_pose(point)[1] - pose_data.pose.position.y
-                    if vel_y < -0.3:
-                        vel_y = -0.3
+                    if vel_y < -0.4:
+                        vel_y = -0.4
                 elif cartesian_pose(point)[1] - pose_data.pose.position.y > 0:
                     vel_y = cartesian_pose(point)[1] - pose_data.pose.position.y
-                    if vel_y > 0.3:
-                        vel_y = 0.3
+                    if vel_y > 0.4:
+                        vel_y = 0.4
 
                 mav.set_position_target(type_mask=MASK_VELOCITY,
                                     x_velocity=vel_x,
                                     y_velocity=vel_y,
                                     z_velocity=initial_height - mav.drone_pose.pose.position.z,
-                                    yaw_rate=-pose_data.pose.position.z)
+                                    yaw_rate=-pose_data.pose.orientation.z)
+
+                paint(10,10)
     mav.land()
     #"""
 
     
 
 if __name__ == '__main__':
+    rospy.init_node("mapping")
+    mav = MAV("1")
+    initial_height = 1
+    mav.takeoff(initial_height)
+    map_sub = rospy.Subscriber("/map", OccupancyGrid, map_callback, queue_size=1)
+    pose_sub = rospy.Subscriber("/slam_out_pose", PoseStamped, pose_callback, queue_size=1)
+    laser_sub = rospy.Subscriber("/laser/scan", LaserScan, laser_callback, queue_size=1)
+    rospy.wait_for_message("/map", OccupancyGrid)
+    rospy.wait_for_message("/slam_out_pose", PoseStamped)
+    
     run()
