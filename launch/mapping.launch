@@ -4,7 +4,7 @@
   
   <node pkg="tf" type="static_transform_publisher" name="corrector1" args="0 0 0 0 0 0 base_link rplidar_link 10"/>
   <node pkg="tf" type="static_transform_publisher" name="corrector2" args="0 0 0 0 0 0 odom base_link 10"/>
-
+  <node pkg="tf" type="static_transform_publisher" name="map_base_broadcaster" args="0 0 0 0 0 0 rplidar_link map 10"/>
   
   <arg name="geotiff_map_file_path" default="$(find hector_geotiff)/maps"/>
 
