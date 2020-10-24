@@ -60,7 +60,7 @@ def detect_cylinders():
             # Nesse caso, seria chao, entao reinicializa as listas temporarias
             else:
                 
-                if 0 < len(temp) < prop_max*res:   # Se nenhum dos de cima, entao   um cilindro. Ai o codigo bota nas listas "objetos" e "obj_indices" e reinicializa os temporarios
+                if 0 < len(temp) < prop_max*res or np.average(temp) < 0.5:   # Se nenhum dos de cima, entao   um cilindro. Ai o codigo bota nas listas "objetos" e "obj_indices" e reinicializa os temporarios
                     indices_temp.append( indices[i-1] )
                     
                     objetos.append(temp)
@@ -85,7 +85,7 @@ def detect_cylinders():
                 previous_i = i % len(dists)
                 current_i = (i-1) % len(dists)
             
-            if 0 < len(temp) < prop_max*res:
+            if 0 < len(temp) < prop_max*res or np.average(temp) < 0.5:
                 indices_temp.append( indices[current_i] )
                 
                 objetos.append(temp)
@@ -110,6 +110,10 @@ def detect_cylinders():
             
             obj_indices.append(indices_temp)
             objetos.append(temp)
+    
+    if np.sum( (sensor < 0.4) * (sensor > 0.1) ) > 3:
+        rospy.logwarn("COLLISION")
+        rospy.loginfo(objetos)
                     
     return objetos, obj_indices
 
@@ -126,11 +130,11 @@ def run():
     rospy.init_node("avoidance")
     laser_sub = rospy.Subscriber("/laser/scan", LaserScan, laser_callback, queue_size=1)
     mav = MAV("1")
-    goal = np.array([0, 0])
+    goal = np.array([8, 0])
     initial_height = 1.5
     mav.takeoff(initial_height)
 
-    a = 0.7 #0.65
+    a = 0.7
     b = 0.6
     c = 0.3
 
@@ -182,17 +186,14 @@ def run():
             middle = (objects_indices[i][0] + objects_indices[i][1])/2 + 1
             theta += (middle*laser_data.angle_increment)
             laser_range = laser_data.ranges[ int(middle) ]
-
-            rospy.loginfo(theta)  
             
-            Fi = Kr * a/(laser_range - b) + c
+            Fi = Kr * a/(laser_range - b) + c if laser_range > 0.67 else 4
             Fix = -Fi*np.cos(theta)
             Fiy = -Fi*np.sin(theta)
             Ft += np.array([Fix, Fiy])
 
         Fg = saturate(Fg)
         F = Ft + Fg
-        #rospy.loginfo("Attraction = {}; Repulsion = {}".format(Fg, Ft))
         mav.set_position_target(type_mask=MASK_VELOCITY,
                                 x_velocity=F[0],
                                 y_velocity=F[1],
