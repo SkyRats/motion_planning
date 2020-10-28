@@ -13,7 +13,6 @@ pose_data = PoseStamped()
 laser_data = LaserScan()
 markers = {}
 obstacles = {}
-sweep_paint = {}
 
 def map_callback(data):
     global map_data
@@ -147,19 +146,17 @@ def WFD():
         except KeyError:
             obstacles[p] = "base"
         ######################
-        if markers[p] == "First Wave" or type(obstacles[p]) == int:
+        if markers[p] == "First Wave" or (type(obstacles[p]) == int and obstacles[p] >= n):
             continue
         for adj in adj_pose(p):
             if (map_data.data[adj] == 0):
                 if is_obstacle_frontier(adj):
                     queued = []
                     enqueue(queued, adj)
-                    obstacles[adj] = 1
+                    dilate(n,adj)
 
                     while (len(queued) != 0):
                         p = dequeue(queued)
-                        if obstacles[p] >= n:
-                            continue
                         for w in adj_pose(p):
                             ######################
                             try:
@@ -167,11 +164,8 @@ def WFD():
                             except KeyError:
                                 obstacles[w] = "base"
                             ######################
-                            if type(obstacles[w]) != int and map_data.data[w] == 0:
-                                obstacles[w] = obstacles[p] + 1
-                                enqueue(queued, w)
-                            if is_obstacle_frontier(w) and (not obstacles[w] == 1):
-                                obstacles[w] = 1
+                            if is_obstacle_frontier(w) and (not obstacles[w] == 2):
+                                dilate(n, w)
                                 enqueue(queued, w)
                 ######################
                 try:
@@ -277,14 +271,21 @@ def reconstruct_path(camefrom, current,n):
         total_path.pop(0)
     return total_path
 
-def paint(width,height):
-    pose = map_pose(pose_data.pose.position.x,pose_data.pose.position.y)
-    for i in range(height):
-        line = ((i+1) - int((height/2)+1))*width
-        for k in range(width):
-            column = ((k+1) - int((width/2)+1))
-            sweep_paint[pose + line + column] = 1
+def dilate(n, map_pose):
+    pose = map_pose
+    for i in range(n):
+        line = ((i+1) - int((n/2)+1))*map_data.info.width
+        for k in range(n):
+            column = ((k+1) - int((n/2)+1))
+            try:
+                type(obstacles[pose + line + column]) != int
+            except KeyError:
+                obstacles[pose + line + column] = "base"
+            if type(obstacles[pose + line + column]) != int:
+                obstacles[pose + line + column] = 1
+    obstacles[pose] = 2
 
+    
 def run():
     mav = MAV("1")
     MASK_VELOCITY = 0b0000011111000111
@@ -311,12 +312,12 @@ def run():
                 matrix.append([])
                 for j in range(301):
                     try:
-                        type(sweep_paint[301*i + j]) == int
+                        type(obstacles[301*i + j]) == int
                     except KeyError:
-                        sweep_paint[301*i + j] = 0
-                    if type(sweep_paint[301*i + j]) != int:
-                        sweep_paint[301*i + j] = 0
-                    matrix[i].append(sweep_paint[301*i + j])
+                        obstacles[301*i + j] = 0
+                    if type(obstacles[301*i + j]) != int:
+                        obstacles[301*i + j] = 0
+                    matrix[i].append(obstacles[301*i + j])
             final_plot = np.array(matrix)
             print(final_plot.shape)
             plt.imshow(final_plot, cmap='hot', interpolation='nearest')
@@ -357,7 +358,6 @@ def run():
                                     z_velocity=initial_height - mav.drone_pose.pose.position.z,
                                     yaw_rate=-pose_data.pose.orientation.z)
 
-                paint(10,10)
     mav.land()
     #"""
 
