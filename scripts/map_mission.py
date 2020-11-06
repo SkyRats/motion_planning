@@ -13,6 +13,7 @@ pose_data = PoseStamped()
 laser_data = LaserScan()
 markers = {}
 obstacles = {}
+fixed_unknown_frontier = []
 
 def map_callback(data):
     global map_data
@@ -55,13 +56,11 @@ def cartesian_pose (position):
     height = map_data.info.height
     width = map_data.info.width
     res = map_data.info.resolution
-    origin = int(height*width/2)
-    y = -((origin - position)/width)*res
-    if not position%width:
-        var = width
-    else: 
-        var = position%width 
-    x = -((origin % width) - var)*res
+    origin_x = map_data.info.origin.position.x
+    origin_y = map_data.info.origin.position.y
+    origin = int(width*height/2)
+    y = origin_y + ((position)/width)*res
+    x = origin_x + (position%width)*res
     return x,y
 
 
@@ -116,23 +115,42 @@ def adj_pose(position):
         adj.append(position - width -1)
     return adj
 
-def checkpoint_selection(checkpoints):
+def checkpoint_selection(checkpoints, camefrom, last_frontier):
     distances = {}
+    frontier_dic = {}
+    i = 0
     if checkpoints == []:
         return []
-    for point in checkpoints:
-        distances[point] = distance(pose_data.pose.position.x, pose_data.pose.position.y,cartesian_pose(point)[0],cartesian_pose(point)[1])
+    for frontier in checkpoints:
+        if frontier in fixed_unknown_frontier:
+            continue
+        if frontier == last_frontier:
+            fixed_unknown_frontier.append(frontier)
+            continue
+        frontier_dic[i] = frontier
+        distances[i] = len(reconstruct_path(camefrom, frontier[int(len(frontier)/2)]))
+        i = i + 1
     distances = sorted(distances.items(), key=lambda x:x[1], reverse=False)
-    return distances[0][0]
+    return frontier_dic[distances[0][0]]
 
 def WFD():
     markers = {}
     Frontiers = []
-    r = 0.3 #####RAIO DO DRONE#######
+    r = 0.4 #####RAIO DO DRONE#######
     n = int((r + 0.4)/map_data.info.resolution)
     queuem = []
     initial = map_pose(pose_data.pose.position.x, pose_data.pose.position.y)
-    enqueue(queuem, initial)
+    try:
+        type(obstacles[initial]) == int
+    except KeyError:
+        obstacles[initial] = "base"
+        
+    if type(obstacles[initial]) == int:
+        print("oops, inside dilated obstacle")
+        for adj in adj_pose(initial):
+            enqueue(queuem,adj)
+    else:
+        enqueue(queuem, initial)
     camefrom = {}
     while(len(queuem) != 0):
         p = dequeue(queuem)
@@ -261,13 +279,14 @@ def WFD():
 
 
 
-def reconstruct_path(camefrom, current,n):
+def reconstruct_path(camefrom, current):
     total_path = []
     total_path.append (current)
     while camefrom.has_key(current):
         current = camefrom[current]
         total_path.append(current)
-    for i in range(n):
+    safety = 7
+    for i in range(safety):
         total_path.pop(0)
     return total_path
 
@@ -291,8 +310,9 @@ def run():
     MASK_VELOCITY = 0b0000011111000111
     initial_height = 1
 
-    r = 0.3 #####RAIO DO DRONE#######
-    n = int((r + 0.1)/map_data.info.resolution)
+    r = 0.4 #####RAIO DO DRONE#######
+    n = int((r + 0.4)/map_data.info.resolution)
+    last_frontier = []
     while not rospy.is_shutdown(): 
         mav.set_position_target(type_mask=MASK_VELOCITY,x_velocity=0,y_velocity=0,z_velocity=initial_height - mav.drone_pose.pose.position.z,yaw_rate=-pose_data.pose.orientation.z)
         #stopping the drone
@@ -301,56 +321,56 @@ def run():
         trajectory = WFD()
         frontiers = trajectory[0]
         for frontier in frontiers:
-            if len(frontier) >= 25:
-                frontier = sorted(frontier)
-                checkpoints.append(frontier[int(len(frontier)/2)])
-        checkpoint = checkpoint_selection(checkpoints)
-        if checkpoint == [] and map_pose(pose_data.pose.position.x,pose_data.pose.position.y) != -1:
+            frontier = sorted(frontier)
+            checkpoints.append(frontier)
+        if checkpoints == [] and map_pose(pose_data.pose.position.x,pose_data.pose.position.y) != -1 and type(obstacles[map_pose(pose_data.pose.position.x,pose_data.pose.position.y)]) != int:
             print("mapping complete :)")
             matrix = []
-            for i in range(301):
+            for i in range(700):
                 matrix.append([])
-                for j in range(301):
+                for j in range(700):
                     try:
-                        type(obstacles[301*i + j]) == int
+                        type(obstacles[700*i + j]) == int
                     except KeyError:
-                        obstacles[301*i + j] = 0
-                    if type(obstacles[301*i + j]) != int:
-                        obstacles[301*i + j] = 0
-                    matrix[i].append(obstacles[301*i + j])
+                        obstacles[700*i + j] = 0
+                    if type(obstacles[700*i + j]) != int:
+                        obstacles[700*i + j] = 0
+                    matrix[i].append(obstacles[700*i + j])
             final_plot = np.array(matrix)
             print(final_plot.shape)
             plt.imshow(final_plot, cmap='hot', interpolation='nearest')
             plt.show()
             mav.land()
-        #"""
-        #"""
-        path = reconstruct_path(trajectory[1], checkpoint,n)
+        last_frontier = checkpoint_selection(checkpoints, trajectory[1],last_frontier)
+        print(last_frontier)
+        checkpoint = last_frontier[int(len(last_frontier)/2)]
+        path = reconstruct_path(trajectory[1], checkpoint)
         path.reverse()
+        print(path)
         print("Success, going towards goal")
         for point in path:
             print("new point detected")
-            while distance(pose_data.pose.position.x, pose_data.pose.position.y, cartesian_pose(point)[0], cartesian_pose(point)[1]) > 0.2 :
+            while distance(pose_data.pose.position.x, pose_data.pose.position.y, cartesian_pose(point)[0], cartesian_pose(point)[1]) > 0.2:
                 if rospy.is_shutdown():
                     break
 
                 if cartesian_pose(point)[0] - pose_data.pose.position.x < 0:
                     vel_x = cartesian_pose(point)[0] - pose_data.pose.position.x
-                    if vel_x < -0.4: 
-                        vel_x = -0.4
+                    if vel_x < -0.5: 
+                        vel_x = -0.5
                 elif cartesian_pose(point)[0] - pose_data.pose.position.x > 0:
                     vel_x = cartesian_pose(point)[0] - pose_data.pose.position.x
-                    if vel_x > 0.4:
-                        vel_x = 0.4
+                    if vel_x > 0.5:
+                        vel_x = 0.5
                 
                 if cartesian_pose(point)[1] - pose_data.pose.position.y < 0:
                     vel_y = cartesian_pose(point)[1] - pose_data.pose.position.y
-                    if vel_y < -0.4:
-                        vel_y = -0.4
+                    if vel_y < -0.5:
+                        vel_y = -0.5
                 elif cartesian_pose(point)[1] - pose_data.pose.position.y > 0:
                     vel_y = cartesian_pose(point)[1] - pose_data.pose.position.y
-                    if vel_y > 0.4:
-                        vel_y = 0.4
+                    if vel_y > 0.5:
+                        vel_y = 0.5
 
                 mav.set_position_target(type_mask=MASK_VELOCITY,
                                     x_velocity=vel_x,
@@ -361,7 +381,19 @@ def run():
     mav.land()
     #"""
 
-    
+def manual_paint():
+    r = 0.4 #####RAIO DO DRONE#######
+    n = int((r + 0.4)/map_data.info.resolution)
+    for i in range(20):
+        dilate(n,map_pose(-1,-5 + 0.5*i))
+    for i in range(21):
+        dilate(n,map_pose(11.5,-5 + 0.5*i))
+    for i in range(25):
+        dilate(n,map_pose(-1 + i*0.5,-5))
+    for i in range(25):
+        dilate(n,map_pose(-1 + i*0.5,5))
+
+
 
 if __name__ == '__main__':
     rospy.init_node("mapping")
@@ -373,5 +405,5 @@ if __name__ == '__main__':
     laser_sub = rospy.Subscriber("/laser/scan", LaserScan, laser_callback, queue_size=1)
     rospy.wait_for_message("/map", OccupancyGrid)
     rospy.wait_for_message("/slam_out_pose", PoseStamped)
-    
+    manual_paint()
     run()
