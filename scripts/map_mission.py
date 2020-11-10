@@ -137,7 +137,7 @@ def WFD():
     markers = {}
     Frontiers = []
     r = 0.4 #####RAIO DO DRONE#######
-    n = int((r + 0.4)/map_data.info.resolution)
+    n = int((r + 0.6)/map_data.info.resolution)
     queuem = []
     initial = map_pose(pose_data.pose.position.x, pose_data.pose.position.y)
     try:
@@ -147,10 +147,8 @@ def WFD():
         
     if type(obstacles[initial]) == int:
         print("oops, inside dilated obstacle")
-        for adj in adj_pose(initial):
-            enqueue(queuem,adj)
-    else:
-        enqueue(queuem, initial)
+        initial = find_safety()
+    enqueue(queuem, initial)
     camefrom = {}
     while(len(queuem) != 0):
         p = dequeue(queuem)
@@ -277,8 +275,6 @@ def WFD():
 
     return Frontiers, camefrom
 
-
-
 def reconstruct_path(camefrom, current):
     total_path = []
     total_path.append (current)
@@ -304,14 +300,27 @@ def dilate(n, map_pose):
                 obstacles[pose + line + column] = 1
     obstacles[pose] = 2
 
-    
+def find_safety():
+    queuek = []
+    enqueue(queuek,map_pose(pose_data.pose.position.x,pose_data.pose.position.y))
+    while True:
+        print("finding safety")
+        p = dequeue(queuek)
+        try:
+            type(obstacles[p]) == int
+        except KeyError:
+            obstacles[p] = "base"
+        if map_data.data[p] == 0 and type(obstacles[p]) != int:
+            return p
+        for adj in adj_pose(p):
+            enqueue(queuek,adj)
 def run():
     mav = MAV("1")
     MASK_VELOCITY = 0b0000011111000111
     initial_height = 1
 
     r = 0.4 #####RAIO DO DRONE#######
-    n = int((r + 0.4)/map_data.info.resolution)
+    n = int((r + 0.6)/map_data.info.resolution)
     last_frontier = []
     while not rospy.is_shutdown(): 
         mav.set_position_target(type_mask=MASK_VELOCITY,x_velocity=0,y_velocity=0,z_velocity=initial_height - mav.drone_pose.pose.position.z,yaw_rate=-pose_data.pose.orientation.z)
@@ -326,21 +335,24 @@ def run():
         if checkpoints == [] and map_pose(pose_data.pose.position.x,pose_data.pose.position.y) != -1 and type(obstacles[map_pose(pose_data.pose.position.x,pose_data.pose.position.y)]) != int:
             print("mapping complete :)")
             matrix = []
-            for i in range(700):
+            for i in range(350):
                 matrix.append([])
-                for j in range(700):
+                for j in range(350):
                     try:
-                        type(obstacles[700*i + j]) == int
+                        type(obstacles[350*i + j]) == int
                     except KeyError:
-                        obstacles[700*i + j] = 0
-                    if type(obstacles[700*i + j]) != int:
-                        obstacles[700*i + j] = 0
-                    matrix[i].append(obstacles[700*i + j])
+                        obstacles[350*i + j] = 0
+                    if type(obstacles[350*i + j]) != int:
+                        obstacles[350*i + j] = 0
+                    matrix[i].append(obstacles[350*i + j])
             final_plot = np.array(matrix)
             print(final_plot.shape)
             plt.imshow(final_plot, cmap='hot', interpolation='nearest')
             plt.show()
             mav.land()
+        if checkpoints == []:
+            print("aaaaaaaaaaaaa")
+            continue
         last_frontier = checkpoint_selection(checkpoints, trajectory[1],last_frontier)
         print(last_frontier)
         checkpoint = last_frontier[int(len(last_frontier)/2)]
@@ -348,42 +360,49 @@ def run():
         path.reverse()
         print(path)
         print("Success, going towards goal")
+        speed_multiplier = 2
+        queuez = []
+        for point in last_frontier:
+            enqueue(queuez, point)
         for point in path:
             print("new point detected")
             while distance(pose_data.pose.position.x, pose_data.pose.position.y, cartesian_pose(point)[0], cartesian_pose(point)[1]) > 0.2:
                 if rospy.is_shutdown():
                     break
-
                 if cartesian_pose(point)[0] - pose_data.pose.position.x < 0:
                     vel_x = cartesian_pose(point)[0] - pose_data.pose.position.x
-                    if vel_x < -0.5: 
-                        vel_x = -0.5
+                    vel_x = speed_multiplier*vel_x
+                    if vel_x < -0.6: 
+                        vel_x = -0.6
                 elif cartesian_pose(point)[0] - pose_data.pose.position.x > 0:
                     vel_x = cartesian_pose(point)[0] - pose_data.pose.position.x
-                    if vel_x > 0.5:
-                        vel_x = 0.5
-                
+                    vel_x = speed_multiplier*vel_x
+                    if vel_x > 0.6:
+                        vel_x = 0.6
                 if cartesian_pose(point)[1] - pose_data.pose.position.y < 0:
                     vel_y = cartesian_pose(point)[1] - pose_data.pose.position.y
-                    if vel_y < -0.5:
-                        vel_y = -0.5
+                    vel_y = speed_multiplier*vel_y
+                    if vel_y < -0.6:
+                        vel_y = -0.6
                 elif cartesian_pose(point)[1] - pose_data.pose.position.y > 0:
                     vel_y = cartesian_pose(point)[1] - pose_data.pose.position.y
-                    if vel_y > 0.5:
-                        vel_y = 0.5
+                    vel_y = speed_multiplier*vel_y
+                    if vel_y > 0.6:
+                        vel_y = 0.6
 
                 mav.set_position_target(type_mask=MASK_VELOCITY,
                                     x_velocity=vel_x,
                                     y_velocity=vel_y,
                                     z_velocity=initial_height - mav.drone_pose.pose.position.z,
                                     yaw_rate=-pose_data.pose.orientation.z)
+            
 
     mav.land()
     #"""
 
 def manual_paint():
     r = 0.4 #####RAIO DO DRONE#######
-    n = int((r + 0.4)/map_data.info.resolution)
+    n = int((r + 0.6)/map_data.info.resolution)
     for i in range(20):
         dilate(n,map_pose(-1,-5 + 0.5*i))
     for i in range(21):
