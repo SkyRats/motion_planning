@@ -69,14 +69,15 @@ def find_edges():
     
     top_y = max(y)
     
-    for i in range(0, len(x)-4, 4):
+    for i in range(0, len(x)-3, 3):
 
         v1 = [ x[i+1] - x[i], y[i+1] - y[i] ]
         v2 = [ x[i+2] - x[i+1], y[i+2] - y[i+1] ]
         angle = np.cross(v1, v2)/(norm(v1)*norm(v2))
 
         if abs(angle) > LINEARITY_TRESHOLD:
-            if previously_aligned and free(x[i+1], y[i+1]) and free(x[i+2], y[i+2]):
+            if previously_aligned:
+                edges.extend( [x[i+1], y[i+1]], [x[i+2], y[i+2]] )
                 top_y = min( [top_y, y[i+1], y[i+2]] )
             elif free(x[i+2], y[i+2]):
                 top_y = min( [top_y, y[i+2]] )
@@ -124,8 +125,10 @@ def execute_trajectory(mav):
             goal_y = b_y
             start_y = t_y
     
-    mav.set_position_target(type_mask=POSITION_TYPEMASK,
-                        x_position=start_x, y_position=start_y) # Vai para ponto de inicio
+    mav.set_position_target(
+        type_mask=POSITION_TYPEMASK,
+        x_position=start_x, y_position=start_y
+    ) # Vai para ponto de inicio
     
     A = abs(t_x - b_x) - SAFE_DISTANCE if vertical else abs(t_y - b_y) - SAFE_DISTANCE
 
