@@ -7,7 +7,7 @@ THRESH = 0.06
 Rectangle = namedtuple('Rectangle', 'right left top bottom')
 
 def close(x, y):
-    return True if abs(x-y) < 10 else False
+    return True if abs(x-y) < 9 else False
 
 def inside(r1, r2): # Retorna Verdadeiro se r1 esta dentro de r2
     if r1.top <= r2.top and r1.bottom >= r2.bottom:
@@ -24,7 +24,7 @@ def clear_rectangles(rectangles):
             continue
 
         for j in rectangles:
-            if j in passed:
+            if j in passed or i == j:
                 continue
             
             if inside(i, j):
@@ -46,11 +46,14 @@ def clear_rectangles(rectangles):
                 new_rectangles.append(new_rect)
                 passed.append(i)
                 passed.append(j)
-
-    print(len(new_rectangles))
-    if len(new_rectangles) == len(rectangles):
-        return new_rectangles
+    
+    if len(new_rectangles) == 0:
+        return rectangles
     else:
+    
+        for k in rectangles:
+            if k not in new_rectangles and k not in passed:
+                new_rectangles.append(k)
         return clear_rectangles(new_rectangles)
 
 def find_rectangles():
