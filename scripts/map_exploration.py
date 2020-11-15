@@ -5,6 +5,8 @@ from collections import namedtuple
 
 THRESH = 0.06
 CLOSENESS_THRESH = 3
+MAP_COLOR = 114
+
 Rectangle = namedtuple('Rectangle', 'right left top bottom')
 
 def close(x, y):
@@ -127,7 +129,7 @@ def find_rectangles():
 
             area = (top-bottom)*(right-left)
             value = np.sum( gray_map[bottom:top+1, left:right+1] ) 
-            if value < 114*THRESH*area:
+            if value < MAP_COLOR * THRESH * area:
                 tr = (right, top)
                 bl = (left, bottom)
                 rect = Rectangle(right, left, top, bottom)
@@ -142,5 +144,5 @@ def find_rectangles():
     cv2.imwrite("marked_clear.png", map)
     
     return rectangles
-    
+
 find_rectangles()
