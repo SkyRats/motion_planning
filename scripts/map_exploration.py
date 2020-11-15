@@ -4,56 +4,91 @@ from numpy.linalg import norm
 from collections import namedtuple
 
 THRESH = 0.06
+CLOSENESS_THRESH = 3
 Rectangle = namedtuple('Rectangle', 'right left top bottom')
 
 def close(x, y):
-    return True if abs(x-y) < 9 else False
+    return True if abs(x-y) < CLOSENESS_THRESH else False
 
-def inside(r1, r2): # Retorna Verdadeiro se r1 esta dentro de r2
-    if r1.top <= r2.top and r1.bottom >= r2.bottom:
-        if r1.right <= r2.right and r1.left >= r2.left:
-            return True
-    return False
+def intersecting(r1, r2):
+    counter = 0
+    output = None
+    if  r2.bottom - CLOSENESS_THRESH < r1.top < r2.top + CLOSENESS_THRESH and r2.bottom - CLOSENESS_THRESH < r1.bottom < r2.top + CLOSENESS_THRESH:
+        counter += 2
+        
+        if r1.left < r2.right and r1.right > r2.right: 
+            output = "right"
+        elif r1.left < r2.left and r1.right > r2.left:
+            output = "left"
+        
+    if r1.left - CLOSENESS_THRESH < r2.right < r1.right + CLOSENESS_THRESH and r1.left - CLOSENESS_THRESH < r2.left < r1.right + CLOSENESS_THRESH:
+        counter += 2
+        
+        if r1.bottom < r2.bottom and r1.top > r2.bottom:
+            output = "bottom"
+        elif r1.bottom < r2.top and r1.top > r2.top:
+            output = "top"
+    
+    if counter == 4:
+        output = "inside"
+
+    return output
 
 def clear_rectangles(rectangles):
     new_rectangles = []
-    passed = []
-    
+    simplified = []
+    removed_intersection = []
+            
     for i in rectangles:
-        if i in passed:
+        if i in simplified:
             continue
 
         for j in rectangles:
-            if j in passed or i == j:
+            if j in simplified or i == j:
                 continue
             
-            if inside(i, j):
+            intersection_i = intersecting(i, j)
+            intersection_j = intersecting(j, i)
+            
+            if intersection_i != None and intersection_i != "inside":
+                if intersection_i == "right":
+                    new_rect = Rectangle( i.right, j.right, i.top, i.bottom )
+                elif intersection_i == "left":
+                    new_rect = Rectangle( j.left, i.left, i.top, i.bottom )
+                elif intersection_i == "bottom":
+                    new_rect = Rectangle( i.right, i.left, i.top, j.top )
+                elif intersection_i == "top":
+                    new_rect = Rectangle( i.right, i.left, j.bottom, i.bottom )
+                new_rectangles.append(new_rect)
+                removed_intersection.append(i)
+
+            if intersection_i == "inside":
                 new_rectangles.append(j)
-                passed.append(i)
-                passed.append(j)
-            elif inside(j, i):
+                simplified.append(i)
+                simplified.append(j)
+            elif intersection_j == "inside":
                 new_rectangles.append(i)
-                passed.append(i)
-                passed.append(j)
+                simplified.append(i)
+                simplified.append(j)
 
             elif close(i.right, j.right) and close(i.left, j.left): # Próximos em X
                 new_rect = Rectangle( i.right, i.left, max(i.top, j.top), min(i.bottom, j.bottom) )
                 new_rectangles.append(new_rect)
-                passed.append(i)
-                passed.append(j)
+                simplified.append(i)
+                simplified.append(j)
             elif close(i.top, j.top) and close(i.bottom, j.bottom): # Próximos em Y
                 new_rect = Rectangle( max(i.right, j.right), min(i.left, j.left), i.top, i.bottom )
                 new_rectangles.append(new_rect)
-                passed.append(i)
-                passed.append(j)
-    
-    if len(new_rectangles) == 0:
-        return rectangles
+                simplified.append(i)
+                simplified.append(j)
+
+    for k in rectangles:
+        if k not in new_rectangles and k not in simplified and k not in removed_intersection:
+            new_rectangles.append(k)
+
+    if len(new_rectangles) == len(rectangles):
+        return new_rectangles
     else:
-    
-        for k in rectangles:
-            if k not in new_rectangles and k not in passed:
-                new_rectangles.append(k)
         return clear_rectangles(new_rectangles)
 
 def find_rectangles():
@@ -96,15 +131,15 @@ def find_rectangles():
                 tr = (right, top)
                 bl = (left, bottom)
                 rect = Rectangle(right, left, top, bottom)
-                #cv2.rectangle(map, bl, tr, (255,0,0), thickness=1)
                 rectangles.append(rect)
 
     rectangles = clear_rectangles(rectangles)
+    print(len(rectangles))
 
     for nr in rectangles:
         cv2.rectangle(map, (nr.right, nr.top), (nr.left, nr.bottom), (0,255,0), thickness=1 )
 
-    cv2.imwrite("marked1.png", map)
+    cv2.imwrite("marked_clear.png", map)
     
     return rectangles
     
