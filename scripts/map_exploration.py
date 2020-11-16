@@ -145,4 +145,68 @@ def find_rectangles():
     
     return rectangles
 
+def execute_trajectory(mav):
+
+    drone_x = pose_data.pose.position.x
+    drone_y = pose_data.pose.position.y
+
+    POSITION_TYPEMASK = 0b0000011111111011
+    SAFE_DISTANCE = 0.3 # Se aplica aos dois lados
+    vertical = True
+
+    rectangles = find_rectangles()
+
+    for rect in rectangles:
+    
+        if abs(rect.right - rect.left) > abs(rect.top - rect.bottom): # Retangulo horizontal
+            start_y = goal_y = (rect.top + rect.bottom)/2
+            
+            if abs(drone_x - rect.right) > abs(drone_x - rect.left): 
+                goal_x = rect.right 
+                start_x = rect.left
+            else: 
+                goal_x = rect.left
+                start_x = rect.right
+
+            vertical = False
+
+        else: # Retangulo vertical
+            start_x = goal_x = (rect.right + rect.left)/2
+
+            if abs(drone_y - rect.top) > abs(drone_y - rect.bottom): 
+                goal_y = rect.top
+                start_y = rect.bottom
+            else: 
+                goal_y = rect.bottom
+                start_y = rect.top
+        while not mav.chegou():
+            mav.set_position_target(
+                type_mask=POSITION_TYPEMASK,
+                x_position=start_x, y_position=start_y
+            ) # Vai para ponto de inicio
+        
+        A = abs(rect.right - rect.left) - SAFE_DISTANCE if vertical else abs(rect.top - rect.bottom) - SAFE_DISTANCE
+
+        t0 = rospy.get_time()
+        while not rospy.is_shutdown and abs(drone_x - goal_x) > GOAL_DIST and abs(drone_y - goal_y) > GOAL_DIST :
+            
+            drone_x = pose_data.pose.position.x
+            drone_y = pose_data.pose.position.y
+
+            vel_factor_x = 1.1 - 1/(5 * abs(drone_x - goal_x))
+            vel_factor_y = 1.1 - 1/(5 * abs(drone_y - goal_y))
+            
+            t = rospy.get_time - t0
+            x_vel = -A*np.cos(t) if vertical else 1
+            y_vel = 1 if vertical else -A*np.cos(t)
+
+            x_vel *= vel_factor_x if vel_factor_x > 0 else 0.1
+            y_vel *= vel_factor_y if vel_factor_y > 0 else 0.1
+
+            mav.set_vel(x_vel, y_vel, 0)
+        
+        fill_marker_area([rect.right, rect.top], [rect.left, rect.bottom])
+    
+    mav.set_vel(0,0,0)
+
 find_rectangles()
