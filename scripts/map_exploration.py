@@ -6,6 +6,7 @@ from collections import namedtuple
 THRESH = 0.06
 CLOSENESS_THRESH = 3
 MAP_COLOR = 114
+DEACCELERATION = 15
 
 Rectangle = namedtuple('Rectangle', 'right left top bottom')
 
@@ -193,8 +194,8 @@ def execute_trajectory(mav):
             drone_x = pose_data.pose.position.x
             drone_y = pose_data.pose.position.y
 
-            vel_factor_x = 1.1 - 1/(5 * abs(drone_x - goal_x))
-            vel_factor_y = 1.1 - 1/(5 * abs(drone_y - goal_y))
+            vel_factor_x = 1.1 - 1/(DEACCELERATION * abs(drone_x - goal_x))
+            vel_factor_y = 1.1 - 1/(DEACCELERATION * abs(drone_y - goal_y))
             
             t = rospy.get_time - t0
             x_vel = -A*np.cos(t) if vertical else 1
