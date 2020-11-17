@@ -13,23 +13,23 @@ Rectangle = namedtuple('Rectangle', 'right left top bottom')
 def close(x, y):
     return True if abs(x-y) < CLOSENESS_THRESH else False
 
-def intersecting(r1, r2):
+def intersecting(outer, inner):
     counter = 0
     output = None
-    if  r2.bottom - CLOSENESS_THRESH < r1.top < r2.top + CLOSENESS_THRESH and r2.bottom - CLOSENESS_THRESH < r1.bottom < r2.top + CLOSENESS_THRESH:
+    if  outer.bottom - CLOSENESS_THRESH < inner.top < outer.top + CLOSENESS_THRESH and outer.bottom - CLOSENESS_THRESH < inner.bottom < outer.top + CLOSENESS_THRESH:
         counter += 2
         
-        if r1.left < r2.right and r1.right > r2.right: 
+        if inner.left < outer.right and inner.right > outer.right: 
             output = "right"
-        elif r1.left < r2.left and r1.right > r2.left:
+        elif inner.left < outer.left and inner.right > outer.left:
             output = "left"
         
-    if r1.left - CLOSENESS_THRESH < r2.right < r1.right + CLOSENESS_THRESH and r1.left - CLOSENESS_THRESH < r2.left < r1.right + CLOSENESS_THRESH:
+    if outer.left - CLOSENESS_THRESH < inner.right < outer.right + CLOSENESS_THRESH and outer.left - CLOSENESS_THRESH < inner.left < outer.right + CLOSENESS_THRESH:
         counter += 2
         
-        if r1.bottom < r2.bottom and r1.top > r2.bottom:
+        if inner.bottom < outer.bottom and inner.top > outer.bottom:
             output = "bottom"
-        elif r1.bottom < r2.top and r1.top > r2.top:
+        elif inner.bottom < outer.top and inner.top > outer.top:
             output = "top"
     
     if counter == 4:
