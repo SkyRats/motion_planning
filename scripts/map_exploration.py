@@ -7,6 +7,7 @@ THRESH = 0.06
 CLOSENESS_THRESH = 3
 MAP_COLOR = 114
 DEACCELERATION = 15
+DRONE_RADIUS = 0.4
 
 Rectangle = namedtuple('Rectangle', 'right left top bottom')
 
@@ -176,6 +177,13 @@ def execute_trajectory(mav):
     rectangles = find_rectangles()
 
     for rect in rectangles:
+
+        w = rect.top - rect.bottom 
+        h = rect.right - rect.left
+        area = w * h
+
+        if w < 2 * DRONE_RADIUS or h < 2 * DRONE_RADIUS:
+            continue
     
         if abs(rect.right - rect.left) > abs(rect.top - rect.bottom): # Retangulo horizontal
             start_y = goal_y = (rect.top + rect.bottom)/2
