@@ -50,15 +50,17 @@ def simplify_rectangles(rectangles):
                 continue
                         
             if close(i.right, j.right) and close(i.left, j.left): # Próximos em X
-                new_rect = Rectangle( i.right, i.left, max(i.top, j.top), min(i.bottom, j.bottom) )
-                new_rectangles.append(new_rect)
-                simplified.append(i)
-                simplified.append(j)
+                if close(i.top, j.bottom) or close(i.bottom, j.top):
+                    new_rect = Rectangle( i.right, i.left, max(i.top, j.top), min(i.bottom, j.bottom) )
+                    new_rectangles.append(new_rect)
+                    simplified.append(i)
+                    simplified.append(j)
             elif close(i.top, j.top) and close(i.bottom, j.bottom): # Próximos em Y
-                new_rect = Rectangle( max(i.right, j.right), min(i.left, j.left), i.top, i.bottom )
-                new_rectangles.append(new_rect)
-                simplified.append(i)
-                simplified.append(j)
+                if close(i.right, j.left) or close(i.left, j.right):
+                    new_rect = Rectangle( max(i.right, j.right), min(i.left, j.left), i.top, i.bottom )
+                    new_rectangles.append(new_rect)
+                    simplified.append(i)
+                    simplified.append(j)
 
     for k in rectangles:
         if k not in new_rectangles and k not in simplified:
