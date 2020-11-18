@@ -13,6 +13,7 @@ pose_data = PoseStamped()
 laser_data = LaserScan()
 markers = {}
 obstacles = {}
+sweep = {}
 fixed_unknown_frontier = []
 
 def map_callback(data):
@@ -133,7 +134,7 @@ def checkpoint_selection(checkpoints, camefrom, last_frontier):
     distances = sorted(distances.items(), key=lambda x:x[1], reverse=False)
     return frontier_dic[distances[0][0]]
 
-def WFD():
+def WFD(goal=-1):
     markers = {}
     Frontiers = []
     r = 0.4 #####RAIO DO DRONE#######
@@ -169,7 +170,7 @@ def WFD():
                 if is_obstacle_frontier(adj):
                     queued = []
                     enqueue(queued, adj)
-                    dilate(n,adj)
+                    dilate_obstacle(n,adj)
 
                     while (len(queued) != 0):
                         p = dequeue(queued)
@@ -181,7 +182,7 @@ def WFD():
                                 obstacles[w] = "base"
                             ######################
                             if is_obstacle_frontier(w) and (not obstacles[w] == 2):
-                                dilate(n, w)
+                                dilate_obstacle(n, w)
                                 enqueue(queued, w)
                 ######################
                 try:
@@ -204,6 +205,9 @@ def WFD():
     mark(initial, "Map-Open-List")
     while(len(queuem) != 0):
         p = dequeue(queuem)
+        if p == goal:
+            print("goal found")
+            return camefrom
         ######################
         try:
             markers[p] == "Map-Close-List"
@@ -281,12 +285,13 @@ def reconstruct_path(camefrom, current):
     while camefrom.has_key(current):
         current = camefrom[current]
         total_path.append(current)
+    print(total_path)
     safety = 7
     for i in range(safety):
         total_path.pop(0)
     return total_path
 
-def dilate(n, map_pose):
+def dilate_obstacle(n, map_pose):
     pose = map_pose
     for i in range(n):
         line = ((i+1) - int((n/2)+1))*map_data.info.width
@@ -299,6 +304,22 @@ def dilate(n, map_pose):
             if type(obstacles[pose + line + column]) != int:
                 obstacles[pose + line + column] = 1
     obstacles[pose] = 2
+
+def dilate_sweep(n):
+    pose = map_pose(pose_data.pose.position.x,pose_data.pose.position.y)
+    for i in range(n):
+        line = ((i+1) - int((n/2)+1))*map_data.info.width
+        for k in range(n):
+            column = ((k+1) - int((n/2)+1))
+            try:
+                type(sweep[pose + line + column]) != int
+            except KeyError:
+                sweep[pose + line + column] = "base"
+            if type(sweep[pose + line + column]) != int and type(obstacles[pose + line + column]) != int:
+                sweep[pose + line + column] = 1
+    sweep[pose] = 2
+
+
 
 def find_safety():
     queuek = []
@@ -344,6 +365,8 @@ def run():
                         obstacles[350*i + j] = 0
                     if type(obstacles[350*i + j]) != int:
                         obstacles[350*i + j] = 0
+                    if obstacles[350*i + j] == 2:
+                        obstacles[350*i + j] = 1 #same color 
                     matrix[i].append(obstacles[350*i + j])
             final_plot = np.array(matrix)
             print(final_plot.shape)
@@ -361,9 +384,6 @@ def run():
         print(path)
         print("Success, going towards goal")
         speed_multiplier = 2
-        queuez = []
-        for point in last_frontier:
-            enqueue(queuez, point)
         for point in path:
             print("new point detected")
             while distance(pose_data.pose.position.x, pose_data.pose.position.y, cartesian_pose(point)[0], cartesian_pose(point)[1]) > 0.2:
@@ -400,17 +420,55 @@ def run():
     mav.land()
     #"""
 
+def go_to(goal):
+    MASK_VELOCITY = 0b0000011111000111
+    camefrom = WFD(goal)
+    path = reconstruct_path(camefrom, goal)
+    path.reverse()
+    speed_multiplier = 2
+    for point in path:
+        print("new point detected")
+        while distance(pose_data.pose.position.x, pose_data.pose.position.y, cartesian_pose(point)[0], cartesian_pose(point)[1]) > 0.2:
+            if rospy.is_shutdown():
+                break
+            if cartesian_pose(point)[0] - pose_data.pose.position.x < 0:
+                vel_x = cartesian_pose(point)[0] - pose_data.pose.position.x
+                vel_x = speed_multiplier*vel_x
+                if vel_x < -0.6: 
+                    vel_x = -0.6
+            elif cartesian_pose(point)[0] - pose_data.pose.position.x > 0:
+                vel_x = cartesian_pose(point)[0] - pose_data.pose.position.x
+                vel_x = speed_multiplier*vel_x
+                if vel_x > 0.6:
+                    vel_x = 0.6
+            if cartesian_pose(point)[1] - pose_data.pose.position.y < 0:
+                vel_y = cartesian_pose(point)[1] - pose_data.pose.position.y
+                vel_y = speed_multiplier*vel_y
+                if vel_y < -0.6:
+                    vel_y = -0.6
+            elif cartesian_pose(point)[1] - pose_data.pose.position.y > 0:
+                vel_y = cartesian_pose(point)[1] - pose_data.pose.position.y
+                vel_y = speed_multiplier*vel_y
+                if vel_y > 0.6:
+                    vel_y = 0.6
+            mav.set_position_target(type_mask=MASK_VELOCITY,
+                                x_velocity=vel_x,
+                                y_velocity=vel_y,
+                                z_velocity=initial_height - mav.drone_pose.pose.position.z,
+                                yaw_rate=-pose_data.pose.orientation.z)
+    print("done")
+
 def manual_paint():
     r = 0.4 #####RAIO DO DRONE#######
     n = int((r + 0.6)/map_data.info.resolution)
     for i in range(20):
-        dilate(n,map_pose(-1,-5 + 0.5*i))
+        dilate_obstacle(n,map_pose(-1,-5 + 0.5*i))
     for i in range(21):
-        dilate(n,map_pose(11.5,-5 + 0.5*i))
+        dilate_obstacle(n,map_pose(11.5,-5 + 0.5*i))
     for i in range(25):
-        dilate(n,map_pose(-1 + i*0.5,-5))
+        dilate_obstacle(n,map_pose(-1 + i*0.5,-5))
     for i in range(25):
-        dilate(n,map_pose(-1 + i*0.5,5))
+        dilate_obstacle(n,map_pose(-1 + i*0.5,5))
 
 
 
@@ -424,5 +482,6 @@ if __name__ == '__main__':
     laser_sub = rospy.Subscriber("/laser/scan", LaserScan, laser_callback, queue_size=1)
     rospy.wait_for_message("/map", OccupancyGrid)
     rospy.wait_for_message("/slam_out_pose", PoseStamped)
-    manual_paint()
-    run()
+    #manual_paint()
+    #run()
+    go_to(map_pose(2,-2))
