@@ -1,6 +1,5 @@
 import cv2
 import numpy as np
-from numpy.linalg import norm
 from collections import namedtuple
 
 THRESH = 0.06
@@ -8,6 +7,7 @@ CLOSENESS_THRESH = 3
 MAP_COLOR = 114
 DEACCELERATION = 15
 DRONE_RADIUS = 0.4
+SAFE_DISTANCE = 0.1 # Se aplica aos dois lados
 
 Rectangle = namedtuple('Rectangle', 'right left top bottom')
 
@@ -171,7 +171,6 @@ def execute_trajectory(mav):
     drone_y = pose_data.pose.position.y
 
     POSITION_TYPEMASK = 0b0000011111111011
-    SAFE_DISTANCE = 0.3 # Se aplica aos dois lados
     vertical = True
 
     rectangles = find_rectangles()
@@ -206,6 +205,7 @@ def execute_trajectory(mav):
             else: 
                 goal_y = rect.bottom
                 start_y = rect.top
+        
         while not mav.chegou():
             mav.set_position_target(
                 type_mask=POSITION_TYPEMASK,
@@ -215,7 +215,7 @@ def execute_trajectory(mav):
         A = abs(rect.right - rect.left) - SAFE_DISTANCE if vertical else abs(rect.top - rect.bottom) - SAFE_DISTANCE
 
         t0 = rospy.get_time()
-        while not rospy.is_shutdown and abs(drone_x - goal_x) > GOAL_DIST and abs(drone_y - goal_y) > GOAL_DIST :
+        while not rospy.is_shutdown and (( not vertical and abs(drone_x - goal_x) > GOAL_DIST ) or (vertical and abs(drone_y - goal_y) > GOAL_DIST )):
             
             drone_x = pose_data.pose.position.x
             drone_y = pose_data.pose.position.y
@@ -231,9 +231,7 @@ def execute_trajectory(mav):
             y_vel *= vel_factor_y if vel_factor_y > 0 else 0.1
 
             mav.set_vel(x_vel, y_vel, 0)
-        
-        fill_marker_area([rect.right, rect.top], [rect.left, rect.bottom])
-    
+            
     mav.set_vel(0,0,0)
 
 find_rectangles()
