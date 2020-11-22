@@ -81,7 +81,6 @@ def cartesian_pose (position):
     x = origin_x + (position%width)*res
     return x,y
 
-
 def is_frontier(position): 
     #detects if the map point given is a frontier between the known and the unknown
     if map_data.data[position] != 0 or map_data.data[position] == map_pose(pose_data.pose.position.x,pose_data.pose.position.y):
@@ -92,7 +91,7 @@ def is_frontier(position):
     return False
 
 def is_obstacle_frontier(position):
-    #detects if the map point given is a frontier between an object and free space
+    #detects if the m:ap point given is a frontier between an object and free space
     if map_data.data[position] != 0 or map_data.data[position] == map_pose(pose_data.pose.position.x,pose_data.pose.position.y):
         return False
     for n in adj_pose(position):
@@ -103,7 +102,6 @@ def is_obstacle_frontier(position):
 def distance(x1,y1, x2,y2):
     #calculates the distance between two points, ignoring obstacles
     return math.sqrt((x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1))
-
 
 def adj_pose(position):
     #returns the Occupancy Grid position of all 8 adjacent points
@@ -282,8 +280,6 @@ def paint_sweep(n):
                 sweep[pose + line + column] = 1
     sweep[pose] = 2
 
-
-
 def find_safety():
     #used when the drone enters an unknown area or a dilated obstacle
     #it provides the drone with a path to leave this situation
@@ -303,38 +299,23 @@ def run(n):
     last_frontier = []
     while not rospy.is_shutdown(): 
         mav.set_position_target(type_mask=MASK_VELOCITY,x_velocity=0,y_velocity=0,z_velocity=initial_height - mav.drone_pose.pose.position.z,yaw_rate=-pose_data.pose.orientation.z)
+        #stop the drone
         frontiers = []
         checkpoints = []
-        trajectory = WFD(n)
-        frontiers = trajectory[0]
+        frontiers, camefrom = WFD(n)
         for frontier in frontiers:
             frontier = sorted(frontier)
             checkpoints.append(frontier)
         if checkpoints == [] and map_pose(pose_data.pose.position.x,pose_data.pose.position.y) != -1 and not obstacles.has_key(map_pose(pose_data.pose.position.x,pose_data.pose.position.y)):
             print("mapping complete :)")
-            matrix = []
-            for i in range(467):
-                matrix.append([])
-                for j in range(467):
-                    if not sweep.has_key(467*i + j):
-                        sweep[467*i + j] = 0
-                    if sweep[467*i + j] == 2:
-                        sweep[467*i + j] = 1 #same color 
-                    matrix[i].append(sweep[467*i + j])
-            final_plot = np.array(matrix)
-            print(final_plot.shape)
-            plt.imshow(final_plot, cmap='hot', interpolation='nearest')
-            plt.show()
+
+
+
             mav.land()
-        if checkpoints == []:
-            print("aaaaaaaaaaaaa")
-            continue
-        last_frontier = checkpoint_selection(checkpoints, trajectory[1],last_frontier)
-        print(last_frontier)
+        last_frontier = checkpoint_selection(checkpoints, camefrom,last_frontier)
         checkpoint = last_frontier[int(len(last_frontier)/2)]
-        path = reconstruct_path(trajectory[1], checkpoint)
+        path = reconstruct_path(camefrom, checkpoint)
         path.reverse()
-        print(path)
         print("Success, going towards goal")
         for point in path:
             print("new point detected")
@@ -371,14 +352,12 @@ def run(n):
             
 
     mav.land()
-    #"""
 
 def go_to(goal,n):
     #find a path to goal using WFD and leads the drone to it
     camefrom = WFD(n, goal)
     path = reconstruct_path(camefrom, goal)
     path.reverse()
-    speed_multiplier = 2
     for point in path:
         print("new point detected")
         while distance(pose_data.pose.position.x, pose_data.pose.position.y, cartesian_pose(point)[0], cartesian_pose(point)[1]) > 0.2:
@@ -412,6 +391,22 @@ def go_to(goal,n):
                                 yaw_rate=-pose_data.pose.orientation.z)
     print("done")
 
+def plot(dictionary):
+    #plots the dictionary as a 2d map (can be used with "obstacles" and "sweep")
+    matrix = []
+    for i in range(467):
+        matrix.append([])
+        for j in range(467):
+            if not dictionary.has_key(467*i + j):
+                dictionary[467*i + j] = 0
+            if dictionary[467*i + j] == 2:
+                dictionary[467*i + j] = 1 #same color 
+            matrix[i].append(dictionary[467*i + j])
+    final_plot = np.array(matrix)
+    print(final_plot.shape)
+    plt.imshow(final_plot, cmap='hot', interpolation='nearest')
+    plt.show()
+
 def manual_paint(n):
     #paints manually the countours of the mission, stops WFD from going through the whole map
     for i in range(20):
@@ -421,9 +416,8 @@ def manual_paint(n):
     for i in range(25):
         dilate_obstacle(n,map_pose(-1 + i*0.5,-5))
     for i in range(25):
-        dilate_obstacle(n,map_pose(-1 + i*0.5,5))
-
-
+        dilate_obs]
+        tacle(n,map_pose(-1 + i*0.5,5))
 
 if __name__ == '__main__':
     rospy.init_node("mapping")
