@@ -2,9 +2,9 @@ import cv2
 import numpy as np
 from collections import namedtuple
 
-THRESH = 0.06
+THRESH = 0.071
 CLOSENESS_THRESH = 3
-MAP_COLOR = 114
+MAP_COLOR = 255
 DEACCELERATION = 15
 DRONE_RADIUS = 0.4
 SAFE_DISTANCE = 0.1 # Se aplica aos dois lados
@@ -113,7 +113,7 @@ def remove_intersection(rectangles):
         return remove_intersection(new_rectangles)
 
 def find_rectangles():
-    map = cv2.imread("map.jpeg")
+    map = cv2.imread("map_v4.png")
     gray_map = cv2.cvtColor(map, cv2.COLOR_BGR2GRAY)
     cv2.threshold(gray_map, 100, 255, cv2.THRESH_TOZERO, dst=gray_map)
 
@@ -161,7 +161,7 @@ def find_rectangles():
     for nr in rectangles:
         cv2.rectangle(map, (nr.right, nr.top), (nr.left, nr.bottom), (0,255,0), thickness=1 )
 
-    cv2.imwrite("marked_clear.png", map)
+    cv2.imwrite("clear_v4.png", map)
     
     return rectangles
 
