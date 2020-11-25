@@ -37,7 +37,6 @@ SAFE_DISTANCE = 0.1 # Se aplica aos dois lados
 
 Rectangle = namedtuple('Rectangle', 'right left top bottom')
 
-
 def close(x, y):
     return True if abs(x-y) < CLOSENESS_THRESH else False
 
@@ -197,14 +196,15 @@ def execute_sweep(mav, map, canvas):
     drone_x = pose_data.pose.position.x
     drone_y = pose_data.pose.position.y
 
-    map_drone_x = drone_x/map_data.info.resolution  + map_data.info.width/2
+    map_drone_x = drone_x//map_data.info.resolution  + map_data.info.width/2
     map_drone_y = drone_y//map_data.info.resolution + map_data.info.height/2
 
     vertical = True
 
-    rectangles = find_rectangles(map)
-    rectangle_dists = [min_dist(drone_x, drone_y, i) for i in rectangles]
-    rectangles = [x for _,x in sorted(zip(rectangles, rectangle_dists))]
+    rectangles = np.array( find_rectangles(map) )
+    rectangle_dists = np.array([min_dist(map_drone_x, map_drone_y, i) for i in rectangles])
+    sort = rectangle_dists.argsort(rectangle_dists)
+    rectangles = rectangles[sort]
 
     for rect in rectangles:
 
