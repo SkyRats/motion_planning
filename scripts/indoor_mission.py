@@ -27,7 +27,8 @@ safety = 0.6
 #####multiplicador de velocidade do drone, cuidado#####
 speed_multiplier = 2
 
-OBSTACLE_THRESH = 0.071
+OBSTACLE_THRESH = 0.04
+GOAL_DIST = 0.15
 CANVAS_THRESH = 0.8
 CLOSENESS_THRESH = 3
 MAP_COLOR = 255
@@ -96,6 +97,7 @@ def simplify_rectangles(rectangles):
     if len(new_rectangles) == len(rectangles):
         return new_rectangles
     else:
+        print("# rectangles simplified", len(new_rectangles))
         return simplify_rectangles(new_rectangles)
 
 def remove_intersection(rectangles):
@@ -136,6 +138,7 @@ def remove_intersection(rectangles):
     if len(new_rectangles) == len(rectangles):
         return new_rectangles
     else:
+        print("# rectangles inter", len(new_rectangles))
         return remove_intersection(new_rectangles)
 
 def find_rectangles(map):
@@ -191,22 +194,20 @@ def min_dist(x, y, rect):
     db = (x - (rect.right + rect.left)/2)**2  + (y - rect.bottom)**2
     return min(dr, dl, dt, db)
 
-def execute_sweep(mav, map, canvas):
+def execute_sweep(mav, map, canvas, n):
 
-    drone_x = pose_data.pose.position.x
-    drone_y = pose_data.pose.position.y
-
-    map_drone_x = drone_x//map_data.info.resolution  + map_data.info.width/2
-    map_drone_y = drone_y//map_data.info.resolution + map_data.info.height/2
-
-    vertical = True
-
-    rectangles = np.array( find_rectangles(map) )
-    rectangle_dists = np.array([min_dist(map_drone_x, map_drone_y, i) for i in rectangles])
-    sort = rectangle_dists.argsort(rectangle_dists)
-    rectangles = rectangles[sort]
 
     for rect in rectangles:
+    
+        map_drone_x = pose_data.pose.position.x//map_data.info.resolution  + map_data.info.width/2
+        map_drone_y = pose_data.pose.position.y//map_data.info.resolution + map_data.info.height/2
+
+        vertical = True
+
+        rectangles = find_rectangles(map)
+        rectangle_dists = np.array([min_dist(map_drone_x, map_drone_y, i) for i in rectangles])
+        sort = np.argsort(rectangle_dists)
+        rectangles = [ rectangles[i] for i in sort ]
 
         w = rect.top - rect.bottom 
         h = rect.right - rect.left
@@ -240,19 +241,28 @@ def execute_sweep(mav, map, canvas):
                 start_y = rect.top
 
         start_x = (start_x - map_data.info.width/2)*map_data.info.resolution
-        start_y = (map_data.info.initial_height/2 - start_y)*map_data.info.resolution
+        start_y = (map_data.info.height/2 - start_y)*map_data.info.resolution
 
-        go_to(map_pose(start_x, start_y), n)
+        start = find_safety(map_pose(start_x, start_y))
+        go_to(start, n)
 
         goal_x = (goal_x - map_data.info.width/2)*map_data.info.resolution
-        goal_y = (map_data.info.initial_height/2 - goal_y)*map_data.info.resolution
+        goal_y = (map_data.info.height/2 - goal_y)*map_data.info.resolution
         
         A = abs(rect.right - rect.left) - SAFE_DISTANCE if vertical else abs(rect.top - rect.bottom) - SAFE_DISTANCE
         A *= map_data.info.resolution
+    
+        drone_x = pose_data.pose.position.x
+        drone_y = pose_data.pose.position.y
 
         t0 = rospy.get_time()
+        print( "Vertical? {0}\n Drone_x: {1}\tGoal_x: {2}\nDrone_y: {3}\tGoal_y: {4}".format(vertical, drone_x, goal_x, drone_y, goal_y) )
+        print( (( not vertical and abs(drone_x - goal_x) > GOAL_DIST ) or (vertical and abs(drone_y - goal_y) > GOAL_DIST )) )
+        
         while not rospy.is_shutdown and (( not vertical and abs(drone_x - goal_x) > GOAL_DIST ) or (vertical and abs(drone_y - goal_y) > GOAL_DIST )):
             
+            print("oi")
+
             drone_x = pose_data.pose.position.x
             drone_y = pose_data.pose.position.y
 
@@ -394,7 +404,7 @@ def WFD(n, goal=-1):
     if obstacles.has_key(initial):
         #prevents the drone from being stuck inside a dilated obstacle
         print("oops, inside dilated obstacle")
-        initial = find_safety()
+        initial = find_safety(initial)
     enqueue(queuem, initial)
     camefrom = {}
     while(len(queuem) != 0):
@@ -522,15 +532,16 @@ def paint_sweep(n):
                 sweep[pose + line + column] = 1
     sweep[pose] = 2
 
-def find_safety():
+def find_safety(point):
     #used when the drone enters an unknown area or a dilated obstacle
     #it provides the drone with a path to leave this situation
     queuek = []
-    enqueue(queuek,map_pose(pose_data.pose.position.x,pose_data.pose.position.y))
+    enqueue(queuek, point)
+    print("finding safety")
     while True:
-        print("finding safety")
         p = dequeue(queuek)
         if map_data.data[p] == 0 and not obstacles.has_key(p):
+            print("safety found")
             return p
         for adj in adj_pose(p):
             enqueue(queuek,adj)
@@ -552,11 +563,13 @@ def run(n):
         if checkpoints == [] and map_pose(pose_data.pose.position.x,pose_data.pose.position.y) != -1 and not obstacles.has_key(map_pose(pose_data.pose.position.x,pose_data.pose.position.y)):
             print("mapping complete :)")
 
-            map = dict_to_np(obstacles)
+            map_obstacles = obstacles.copy()
+            map = dict_to_np(map_obstacles)
             canvas = dict_to_np(sweep)
-            execute_sweep(mav, map, canvas)
-
+            execute_sweep(mav, map, canvas, n)
+        
             mav.land()
+            break
 
         last_frontier = checkpoint_selection(checkpoints, camefrom,last_frontier)
         checkpoint = last_frontier[int(len(last_frontier)/2)]
@@ -564,7 +577,6 @@ def run(n):
         path.reverse()
         print("Success, going towards goal")
         for point in path:
-            print("new point detected")
             while distance(pose_data.pose.position.x, pose_data.pose.position.y, cartesian_pose(point)[0], cartesian_pose(point)[1]) > 0.2:
                 if rospy.is_shutdown():
                     break
@@ -600,7 +612,7 @@ def run(n):
 
     mav.land()
 
-def go_to(goal ,n):
+def go_to(goal, n):
     #find a path to goal using WFD and leads the drone to it
     camefrom = WFD(n, goal)
     path = reconstruct_path(camefrom, goal)
