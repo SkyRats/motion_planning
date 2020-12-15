@@ -7,6 +7,7 @@ from geometry_msgs.msg import PoseStamped
 import matplotlib.pyplot as plt
 from scipy.ndimage import morphology
 from sensor_msgs.msg import LaserScan
+from time import time 
 import math
 
 MASK_VELOCITY = 0b0000011111000111
@@ -128,7 +129,10 @@ def checkpoint_selection(checkpoints,n):
     if checkpoints == []:
         return []
     for point in checkpoints:
-        path[i] = reconstruct_path(A_star(point,n), point)
+        trajectory = reconstruct_path(A_star(point,n), point)
+        if type(trajectory) == int:
+            continue
+        path[i] = trajectory
         distances[i] = len(path[i])
         i = i + 1
     distances = sorted(distances.items(), key=lambda x:x[1], reverse=False)
@@ -224,6 +228,9 @@ def H(node, goal):
 
 def A_star(goal,n):
     inflated_grid = update_dilated_map(n)
+
+    t0 = time()
+
     OPEN = []
     CLOSE = []
     h = {}
@@ -237,6 +244,10 @@ def A_star(goal,n):
 
     enqueue(OPEN,start)
     while(len(OPEN) != 0):
+        t1 = time()
+        if (t1 - t0) > 1:
+            print("timeout")
+            return 0
 
 
         current = OPEN[0]
@@ -280,6 +291,8 @@ def A_star(goal,n):
 
 def reconstruct_path(camefrom, current):
     #uses "camefrom" dictionary and a frontier point ("current") to construct a path between the drone and the frontier
+    if type(camefrom) == int:
+        return 0
     total_path = []
     total_path.append (current)
     while camefrom.has_key(current):
