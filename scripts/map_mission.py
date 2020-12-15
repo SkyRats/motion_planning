@@ -5,6 +5,7 @@ from MAV import MAV
 from nav_msgs.msg import OccupancyGrid
 from geometry_msgs.msg import PoseStamped
 import matplotlib.pyplot as plt
+from scipy.ndimage import morphology
 from sensor_msgs.msg import LaserScan
 import math
 
@@ -15,16 +16,17 @@ laser_data = LaserScan()
 markers = {}
 obstacles = {}
 sweep = {}
-fixed_unknown_frontier = []
+
+
 
 
 
 #####Drone's radius#######
 r = 0.4
 ####Safety parameter###
-safety = 0.6
+safety = 0.8
 #####multiplicador de velocidade do drone, cuidado#####
-speed_multiplier = 2
+speed_multiplier = 5
 
 
 
@@ -118,92 +120,60 @@ def adj_pose(position):
         adj.append(position - width -1)
     return adj
 
-def checkpoint_selection(checkpoints, camefrom, last_frontier):
-    #chooses the nearest frontier, based on the size of the trajectory leading to the frontier
+def checkpoint_selection(checkpoints,n):
+    #chooses the nearest checkpoint, based on the size of the trajectory leading to the point
     distances = {}
-    frontier_dic = {}
+    path = {}
     i = 0
     if checkpoints == []:
         return []
-    for frontier in checkpoints:
-        if frontier in fixed_unknown_frontier:
-            continue
-        if frontier == last_frontier:
-            fixed_unknown_frontier.append(frontier)
-            continue
-        #These checks are here to prevent the drone from getting stuck trying a frontier that doesn't lead to discovery (obstacles in this direction are out of lidar range)
-        frontier_dic[i] = frontier
-        distances[i] = len(reconstruct_path(camefrom, frontier[int(len(frontier)/2)]))
+    for point in checkpoints:
+        path[i] = reconstruct_path(A_star(point,n), point)
+        distances[i] = len(path[i])
         i = i + 1
     distances = sorted(distances.items(), key=lambda x:x[1], reverse=False)
-    return frontier_dic[distances[0][0]]
+    print("path selected")
+    return path[distances[0][0]]
 
-def WFD(n, goal=-1):
+def update_dilated_map(n):
+    inflated_grid = np.array(map_data.data)
+    inflated_grid = np.reshape(inflated_grid, (map_data.info.width,map_data.info.width))
+    inflated_grid = morphology.grey_dilation(inflated_grid, size=(n,n))
+    inflated_grid = np.reshape(inflated_grid, (map_data.info.width*map_data.info.width))
+    return inflated_grid
+
+def WFD(n):
     #The heart of this code
     #WFD (Wavefront Frontier Detector) is a frontier-based exploration strategy
     #To understand the logic behind it visit: https://arxiv.org/pdf/1806.03581.pdf
-    #Additions were made to the code, including the "camefrom", which makes WFD a trajectort planner aswell
     #additionaly, a "First wave" was introduced to dilate the map obstacles and prevent colisions while using the planner
+    inflated_grid = update_dilated_map(n)
     markers = {}
+
+    NewFrontier = []
     Frontiers = []
     
     queuem = []
+    queuef = []
+
     initial = map_pose(pose_data.pose.position.x, pose_data.pose.position.y)
-    if obstacles.has_key(initial):
+    if inflated_grid[initial] == 100:
         #prevents the drone from being stuck inside a dilated obstacle
         print("oops, inside dilated obstacle")
-        initial = find_safety()
-    enqueue(queuem, initial)
-    camefrom = {}
-    while(len(queuem) != 0):
-        p = dequeue(queuem)
+        initial = find_safety(n)
 
-        if markers.has_key(p):
-            if markers[p] == "First Wave":
-                continue
-        if obstacles.has_key(p):
-            continue
-        
-        for adj in adj_pose(p):
-            if (map_data.data[adj] == 0):
-                if is_obstacle_frontier(adj):
-                    queued = []
-                    enqueue(queued, adj)
-                    dilate_obstacle(n,adj)
-
-                    while (len(queued) != 0):
-                        p = dequeue(queued)
-                        for w in adj_pose(p):
-                            if is_obstacle_frontier(w):
-                                if obstacles.has_key(w):
-                                    if obstacles[w] == 2:
-                                        continue
-                                dilate_obstacle(n, w)
-                                enqueue(queued, w)
-
-                if not obstacles.has_key(adj) and not markers.has_key(adj):
-                    enqueue(queuem, adj)
-            markers[p] = "First Wave"
-    #####Second wave starts here#####
-    markers = {}
-    queuem = []
-    queuef = []
-    NewFrontier = []
     enqueue(queuem, initial)
     mark(initial, "Map-Open-List")
     while(len(queuem) != 0):
         p = dequeue(queuem)
-        if p == goal:
-            #"point finder" usage of WFD, works when goal != 1 in the function parameters
-            print("goal found")
-            return camefrom
 
         if markers.has_key(p):
             if markers[p] == "Map-Close-List":
                 continue
-        if obstacles.has_key(p):
+        if obstacles.has_key(p) or inflated_grid[p] == 100:
             continue
-
+        
+                        
         if is_frontier(p):
             queuef = []
             NewFrontier = []
@@ -217,7 +187,7 @@ def WFD(n, goal=-1):
                 if markers.has_key(q):
                     if markers[q] == "Map-Close-List" or markers[q] == "Frontier-Close-List":
                         continue
-                if obstacles.has_key(q):
+                if obstacles.has_key(q) or inflated_grid[q] == 100:
                     continue
 
                 if is_frontier(q):
@@ -228,7 +198,6 @@ def WFD(n, goal=-1):
                                 continue
                         if is_frontier(w):
                             enqueue(queuef, w)
-                            camefrom[w] = q
                             markers[w] = "Frontier-Open-List"
                 markers[q] = "Frontier-Close-List"
             if NewFrontier not in Frontiers:
@@ -240,14 +209,74 @@ def WFD(n, goal=-1):
                 if markers.has_key(adj):
                     if markers[adj] == "Map-Open-List" or markers[adj] == "Map-Close-List":
                         continue
-                if not obstacles.has_key(adj):
+                if not obstacles.has_key(adj) and not inflated_grid[adj] == 100:
                     enqueue(queuem, adj)
-                    camefrom[adj] = p
-                    #the line above is the heart of the "camefrom" strategy, every "origin point" is stored
                     markers[adj] = "Map-Open-List"
         markers[p] = "Map-Close-List"
 
-    return Frontiers, camefrom
+    return Frontiers
+
+def H(node, goal):
+    #heuristic function of the A* algorithm
+    node = cartesian_pose(node)
+    goal = cartesian_pose(goal)
+    return distance(node[0], node[1], goal[0], goal[1])
+
+def A_star(goal,n):
+    inflated_grid = update_dilated_map(n)
+    OPEN = []
+    CLOSE = []
+    h = {}
+    g = {}
+    camefrom = {}
+
+    start = map_pose(pose_data.pose.position.x, pose_data.pose.position.y)
+
+    g[start] = 0
+    h[start] = H(start,goal)
+
+    enqueue(OPEN,start)
+    while(len(OPEN) != 0):
+
+
+        current = OPEN[0]
+        for node in OPEN:
+            if g[node] + h[node] <= g[current] + h[current]:
+                current = node
+        OPEN.remove(current)
+
+        if current == goal:
+            print("A* sucess")
+            return camefrom
+        
+        for sucessor in adj_pose(current):
+            if sucessor == goal:
+                camefrom[sucessor] = current
+                print("A* sucess")
+                return camefrom
+
+            if map_data.data[sucessor] == -1 or obstacles.has_key(sucessor) or inflated_grid[sucessor] == 100:
+                continue
+            
+            sucessor_current_cost = g[current] + map_data.info.resolution
+            if sucessor in OPEN:
+                if g[sucessor] <= sucessor_current_cost:
+                    continue
+            elif sucessor in CLOSE:
+                if g[sucessor] <= sucessor_current_cost:
+                    continue
+                CLOSE.remove(sucessor)
+                OPEN.append(sucessor)
+            else:
+                OPEN.append(sucessor)
+                h[sucessor] = H(sucessor,goal)
+            g[sucessor] = sucessor_current_cost
+            camefrom[sucessor] = current
+        CLOSE.append(current)
+    print("A* fail")
+    return 0
+
+
 
 def reconstruct_path(camefrom, current):
     #uses "camefrom" dictionary and a frontier point ("current") to construct a path between the drone and the frontier
@@ -269,6 +298,7 @@ def dilate_obstacle(n, map_pose):
                 obstacles[pose + line + column] = 1
     obstacles[pose] = 2
 
+"""
 def paint_sweep(n):
     #"paints" the Occupancy Grid points that have been seen by the drone's camera
     pose = map_pose(pose_data.pose.position.x,pose_data.pose.position.y)
@@ -280,7 +310,9 @@ def paint_sweep(n):
                 sweep[pose + line + column] = 1
     sweep[pose] = 2
 
-def find_safety():
+"""
+def find_safety(n):
+    inflated_grid = update_dilated_map(n)
     #used when the drone enters an unknown area or a dilated obstacle
     #it provides the drone with a path to leave this situation
     queuek = []
@@ -288,7 +320,7 @@ def find_safety():
     while True:
         print("finding safety")
         p = dequeue(queuek)
-        if map_data.data[p] == 0 and not obstacles.has_key(p):
+        if map_data.data[p] == 0 and not obstacles.has_key(p) and not inflated_grid[p] == 100:
             return p
         for adj in adj_pose(p):
             enqueue(queuek,adj)
@@ -302,10 +334,10 @@ def run(n):
         #stop the drone
         frontiers = []
         checkpoints = []
-        frontiers, camefrom = WFD(n)
+        frontiers = WFD(n)
         for frontier in frontiers:
             frontier = sorted(frontier)
-            checkpoints.append(frontier)
+            checkpoints.append(frontier[int(len(frontier)/2)])
         if checkpoints == [] and map_pose(pose_data.pose.position.x,pose_data.pose.position.y) != -1 and not obstacles.has_key(map_pose(pose_data.pose.position.x,pose_data.pose.position.y)):
             print("mapping complete :)")
 
@@ -391,7 +423,7 @@ def go_to(goal,n):
                                 yaw_rate=-pose_data.pose.orientation.z)
     print("done")
 
-def plot(dictionary):
+def plot_dic(dictionary):
     #plots the dictionary as a 2d map (can be used with "obstacles" and "sweep")
     matrix = []
     for i in range(467):
@@ -407,6 +439,18 @@ def plot(dictionary):
     plt.imshow(final_plot, cmap='hot', interpolation='nearest')
     plt.show()
 
+def plot(list):
+    #plots the list as a 2d map (can be used with "obstacles" and "sweep")
+    matrix = []
+    for i in range(467):
+        matrix.append([])
+        for j in range(467): 
+            matrix[i].append(list[467*i + j])
+    final_plot = np.array(matrix)
+    print(final_plot.shape)
+    plt.imshow(final_plot, cmap='hot', interpolation='nearest')
+    plt.show()
+
 def manual_paint(n):
     #paints manually the countours of the mission, stops WFD from going through the whole map
     for i in range(20):
@@ -416,8 +460,67 @@ def manual_paint(n):
     for i in range(25):
         dilate_obstacle(n,map_pose(-1 + i*0.5,-5))
     for i in range(25):
-        dilate_obs]
-        tacle(n,map_pose(-1 + i*0.5,5))
+        dilate_obstacle(n,map_pose(-1 + i*0.5,5))
+
+def test(n):
+    mav = MAV("1")
+    initial_height = 1
+    while not rospy.is_shutdown():
+        inflated_grid = update_dilated_map(n)
+        mav.set_position_target(type_mask=MASK_VELOCITY,x_velocity=0,y_velocity=0,z_velocity=initial_height - mav.drone_pose.pose.position.z,yaw_rate=-pose_data.pose.orientation.z)
+        frontiers = []
+        checkpoints = []
+        frontiers = WFD(n)
+        for frontier in frontiers:
+            if frontier == []:
+                print(frontier)
+                continue
+            frontier = sorted(frontier)
+            checkpoints.append(frontier[int(len(frontier)/2)])
+        
+        if checkpoints == [] and map_pose(pose_data.pose.position.x,pose_data.pose.position.y) != -1 and not obstacles.has_key(map_pose(pose_data.pose.position.x,pose_data.pose.position.y)) and not inflated_grid[map_pose(pose_data.pose.position.x,pose_data.pose.position.y)] == 100:
+            print("mapping complete :)")
+            mav.land()
+        
+        path = checkpoint_selection(checkpoints,n)
+        path.reverse()
+
+        for point in path:
+            while distance(pose_data.pose.position.x, pose_data.pose.position.y, cartesian_pose(point)[0], cartesian_pose(point)[1]) > 0.2:
+                if rospy.is_shutdown():
+                    break
+                """
+                paint_sweep(n)
+                """
+                if cartesian_pose(point)[0] - pose_data.pose.position.x < 0:
+                    vel_x = cartesian_pose(point)[0] - pose_data.pose.position.x
+                    vel_x = speed_multiplier*vel_x
+                    if vel_x < -0.8: 
+                        vel_x = -0.8
+                elif cartesian_pose(point)[0] - pose_data.pose.position.x > 0:
+                    vel_x = cartesian_pose(point)[0] - pose_data.pose.position.x
+                    vel_x = speed_multiplier*vel_x
+                    if vel_x > 0.8:
+                        vel_x = 0.8
+                if cartesian_pose(point)[1] - pose_data.pose.position.y < 0:
+                    vel_y = cartesian_pose(point)[1] - pose_data.pose.position.y
+                    vel_y = speed_multiplier*vel_y
+                    if vel_y < -0.8:
+                        vel_y = -0.8
+                elif cartesian_pose(point)[1] - pose_data.pose.position.y > 0:
+                    vel_y = cartesian_pose(point)[1] - pose_data.pose.position.y
+                    vel_y = speed_multiplier*vel_y
+                    if vel_y > 0.8:
+                        vel_y = 0.8
+
+                mav.set_position_target(type_mask=MASK_VELOCITY,
+                                    x_velocity=vel_x,
+                                    y_velocity=vel_y,
+                                    z_velocity=initial_height - mav.drone_pose.pose.position.z,
+                                    yaw_rate=-pose_data.pose.orientation.z)
+        
+
+
 
 if __name__ == '__main__':
     rospy.init_node("mapping")
@@ -431,4 +534,4 @@ if __name__ == '__main__':
     rospy.wait_for_message("/slam_out_pose", PoseStamped)
     n = int((r + safety)/map_data.info.resolution)
     manual_paint(n)
-    run(n)
+    test(n)
