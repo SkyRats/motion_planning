@@ -147,10 +147,8 @@ def update_dilated_map(n):
     return inflated_grid
 
 def WFD(n):
-    #The heart of this code
     #WFD (Wavefront Frontier Detector) is a frontier-based exploration strategy
     #To understand the logic behind it visit: https://arxiv.org/pdf/1806.03581.pdf
-    #additionaly, a "First wave" was introduced to dilate the map obstacles and prevent colisions while using the planner
     inflated_grid = update_dilated_map(n)
     markers = {}
 
@@ -249,7 +247,6 @@ def A_star(goal,n):
             print("timeout")
             return 0
 
-
         current = OPEN[0]
         for node in OPEN:
             if g[node] + h[node] <= g[current] + h[current]:
@@ -322,8 +319,8 @@ def paint_sweep(n):
             if not sweep.has_key(pose + line + column) and not obstacles.has_key(pose + line + column):
                 sweep[pose + line + column] = 1
     sweep[pose] = 2
-
 """
+
 def find_safety(n):
     inflated_grid = update_dilated_map(n)
     #used when the drone enters an unknown area or a dilated obstacle
@@ -338,105 +335,8 @@ def find_safety(n):
         for adj in adj_pose(p):
             enqueue(queuek,adj)
 
-def run(n):
-    mav = MAV("1")
-    initial_height = 1
-    last_frontier = []
-    while not rospy.is_shutdown(): 
-        mav.set_position_target(type_mask=MASK_VELOCITY,x_velocity=0,y_velocity=0,z_velocity=initial_height - mav.drone_pose.pose.position.z,yaw_rate=-pose_data.pose.orientation.z)
-        #stop the drone
-        frontiers = []
-        checkpoints = []
-        frontiers = WFD(n)
-        for frontier in frontiers:
-            frontier = sorted(frontier)
-            checkpoints.append(frontier[int(len(frontier)/2)])
-        if checkpoints == [] and map_pose(pose_data.pose.position.x,pose_data.pose.position.y) != -1 and not obstacles.has_key(map_pose(pose_data.pose.position.x,pose_data.pose.position.y)):
-            print("mapping complete :)")
 
-
-
-            mav.land()
-        last_frontier = checkpoint_selection(checkpoints, camefrom,last_frontier)
-        checkpoint = last_frontier[int(len(last_frontier)/2)]
-        path = reconstruct_path(camefrom, checkpoint)
-        path.reverse()
-        print("Success, going towards goal")
-        for point in path:
-            print("new point detected")
-            while distance(pose_data.pose.position.x, pose_data.pose.position.y, cartesian_pose(point)[0], cartesian_pose(point)[1]) > 0.2:
-                if rospy.is_shutdown():
-                    break
-                paint_sweep(n)
-                if cartesian_pose(point)[0] - pose_data.pose.position.x < 0:
-                    vel_x = cartesian_pose(point)[0] - pose_data.pose.position.x
-                    vel_x = speed_multiplier*vel_x
-                    if vel_x < -0.6: 
-                        vel_x = -0.6
-                elif cartesian_pose(point)[0] - pose_data.pose.position.x > 0:
-                    vel_x = cartesian_pose(point)[0] - pose_data.pose.position.x
-                    vel_x = speed_multiplier*vel_x
-                    if vel_x > 0.6:
-                        vel_x = 0.6
-                if cartesian_pose(point)[1] - pose_data.pose.position.y < 0:
-                    vel_y = cartesian_pose(point)[1] - pose_data.pose.position.y
-                    vel_y = speed_multiplier*vel_y
-                    if vel_y < -0.6:
-                        vel_y = -0.6
-                elif cartesian_pose(point)[1] - pose_data.pose.position.y > 0:
-                    vel_y = cartesian_pose(point)[1] - pose_data.pose.position.y
-                    vel_y = speed_multiplier*vel_y
-                    if vel_y > 0.6:
-                        vel_y = 0.6
-
-                mav.set_position_target(type_mask=MASK_VELOCITY,
-                                    x_velocity=vel_x,
-                                    y_velocity=vel_y,
-                                    z_velocity=initial_height - mav.drone_pose.pose.position.z,
-                                    yaw_rate=-pose_data.pose.orientation.z)
-            
-
-    mav.land()
-
-def go_to(goal,n):
-    #find a path to goal using WFD and leads the drone to it
-    camefrom = WFD(n, goal)
-    path = reconstruct_path(camefrom, goal)
-    path.reverse()
-    for point in path:
-        print("new point detected")
-        while distance(pose_data.pose.position.x, pose_data.pose.position.y, cartesian_pose(point)[0], cartesian_pose(point)[1]) > 0.2:
-            if rospy.is_shutdown():
-                break
-            paint_sweep(n)
-            if cartesian_pose(point)[0] - pose_data.pose.position.x < 0:
-                vel_x = cartesian_pose(point)[0] - pose_data.pose.position.x
-                vel_x = speed_multiplier*vel_x
-                if vel_x < -0.6: 
-                    vel_x = -0.6
-            elif cartesian_pose(point)[0] - pose_data.pose.position.x > 0:
-                vel_x = cartesian_pose(point)[0] - pose_data.pose.position.x
-                vel_x = speed_multiplier*vel_x
-                if vel_x > 0.6:
-                    vel_x = 0.6
-            if cartesian_pose(point)[1] - pose_data.pose.position.y < 0:
-                vel_y = cartesian_pose(point)[1] - pose_data.pose.position.y
-                vel_y = speed_multiplier*vel_y
-                if vel_y < -0.6:
-                    vel_y = -0.6
-            elif cartesian_pose(point)[1] - pose_data.pose.position.y > 0:
-                vel_y = cartesian_pose(point)[1] - pose_data.pose.position.y
-                vel_y = speed_multiplier*vel_y
-                if vel_y > 0.6:
-                    vel_y = 0.6
-            mav.set_position_target(type_mask=MASK_VELOCITY,
-                                x_velocity=vel_x,
-                                y_velocity=vel_y,
-                                z_velocity=initial_height - mav.drone_pose.pose.position.z,
-                                yaw_rate=-pose_data.pose.orientation.z)
-    print("done")
-
-def plot_dic(dictionary):
+def plot(dictionary):
     #plots the dictionary as a 2d map (can be used with "obstacles" and "sweep")
     matrix = []
     for i in range(467):
@@ -447,18 +347,6 @@ def plot_dic(dictionary):
             if dictionary[467*i + j] == 2:
                 dictionary[467*i + j] = 1 #same color 
             matrix[i].append(dictionary[467*i + j])
-    final_plot = np.array(matrix)
-    print(final_plot.shape)
-    plt.imshow(final_plot, cmap='hot', interpolation='nearest')
-    plt.show()
-
-def plot(list):
-    #plots the list as a 2d map (can be used with "obstacles" and "sweep")
-    matrix = []
-    for i in range(467):
-        matrix.append([])
-        for j in range(467): 
-            matrix[i].append(list[467*i + j])
     final_plot = np.array(matrix)
     print(final_plot.shape)
     plt.imshow(final_plot, cmap='hot', interpolation='nearest')
@@ -475,7 +363,7 @@ def manual_paint(n):
     for i in range(25):
         dilate_obstacle(n,map_pose(-1 + i*0.5,5))
 
-def test(n):
+def run(n):
     mav = MAV("1")
     initial_height = 1
     while not rospy.is_shutdown():
@@ -547,4 +435,4 @@ if __name__ == '__main__':
     rospy.wait_for_message("/slam_out_pose", PoseStamped)
     n = int((r + safety)/map_data.info.resolution)
     manual_paint(n)
-    test(n)
+    run(n)
