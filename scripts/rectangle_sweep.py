@@ -178,19 +178,24 @@ def find_rectangles(map):
 
     return rectangles
 
-def min_dist(x, y, rect):
-    dr = (x - rect.right)**2 + (y - (rect.top + rect.bottom)/2)**2
-    dl = (x - rect.left)**2  + (y - (rect.top + rect.bottom)/2)**2
-    dt = (x - (rect.right + rect.left)/2)**2  + (y - rect.top)**2
-    db = (x - (rect.right + rect.left)/2)**2  + (y - rect.bottom)**2
-    return min(dr, dl, dt, db)
+def calculate_rectangle_distances(x, y, rectangle):
+    distance_right  = (x - rectangle.right)**2 + (y - (rectangle.top + rectangle.bottom)/2)**2
+    distance_left   = (x - rectangle.left)**2  + (y - (rectangle.top + rectangle.bottom)/2)**2
+    distance_top    = (x - (rectangle.right + rectangle.left)/2)**2  + (y - rectangle.top)**2
+    distance_bottom = (x - (rectangle.right + rectangle.left)/2)**2  + (y - rectangle.bottom)**2
+    return distance_right, distance_left, distance_top, distance_bottom
 
-def calculate_sweep(map, canvas, n):
-
+def find_closest_rectangle(x, y, rectangles):
+    closest_rectangle = None
+    min_distance = 1000
     for rect in rectangles:
-    
-        map_drone_x = pose_data.pose.position.x//map_data.info.resolution  + map_data.info.width/2
-        map_drone_y = pose_data.pose.position.y//map_data.info.resolution + map_data.info.height/2
+        dr, dl, dt, db = calculate_rectangle_distances(x, y, rect)
+
+        rectangle_min_distance = min(dr, dl, dt, db)
+        if rectangle_min_distance < min_distance:
+            min_distance = rectangle_min_distance
+            closest_rectangle = rect
+    return closest_rectangle 
 
         vertical = None
 
