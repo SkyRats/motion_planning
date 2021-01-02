@@ -1,10 +1,8 @@
 import rospy
 import numpy as np
-import ros_numpy
 from MAV import MAV
 from nav_msgs.msg import OccupancyGrid
 from geometry_msgs.msg import PoseStamped
-from sensor_msgs.msg import LaserScan
 
 from .motion_planning import grid_motion_planning
 
@@ -13,19 +11,17 @@ from collections import namedtuple
 
 map_data = OccupancyGrid()
 pose_data = PoseStamped()
-markers = {}
-obstacles = {}
-sweep = {}
-fixed_unknown_frontier = []
     
 OBSTACLE_THRESH = 0.04
 GOAL_DIST = 0.15
-CANVAS_THRESH = 0.8
 CLOSENESS_THRESH = 3
 MAP_COLOR = 255
 DEACCELERATION = 15
 DRONE_RADIUS = 0.4
 SAFE_DISTANCE = 0.1 # Se aplica aos dois lados
+INITIAL_HEIGHT = 1.5
+PERIOD = 100
+NUMBER_OF_STEPS = 20
 
 Rectangle = namedtuple('Rectangle', 'right left top bottom')
 
@@ -197,23 +193,29 @@ def find_closest_rectangle(x, y, rectangles):
             closest_rectangle = rect
     return closest_rectangle 
 
-        vertical = None
+def calculate_sweep(map, n):
 
-        rectangles = find_rectangles(map)
-        rectangle_dists = np.array([min_dist(map_drone_x, map_drone_y, i) for i in rectangles])
-        sort = np.argsort(rectangle_dists)
-        rectangles = [ rectangles[i] for i in sort ]
+    sweep = []
+    rectangles = find_rectangles(map)
+
+    map_drone_x = pose_data.pose.position.x//map_data.info.resolution  + map_data.info.width/2
+    map_drone_y = pose_data.pose.position.y//map_data.info.resolution + map_data.info.height/2
+
+    while len(rectangles) != 0:
+
+        traejctory = [] # Tipo (lista, dicionário ou fila) depende da implementação de follow_trajectory
+        rect = find_closest_rectangle(map_drone_x, map_drone_y, rectangles)
+        rectangles.remove(rect)
 
         w = rect.top - rect.bottom 
         h = rect.right - rect.left
-        area = w * h
-
-        if np.sum( canvas[rect.bottom:rect.top+1, rect.left:rect.right+1] ) > area * CANVAS_THRESH:
-            continue 
         if w < 2 * DRONE_RADIUS or h < 2 * DRONE_RADIUS:
             continue
-    
-        if abs(rect.right - rect.left) > abs(rect.top - rect.bottom): # Retangulo horizontal
+
+        start = find_safety(map_pose(start_x, start_y))
+        sweep.append( grid_motion_planning.A_star(start, n) )
+
+        if abs(rect.right - rect.left) > abs(rect.top - rect.bottom):
             start_y = goal_y = (rect.top + rect.bottom)/2
             
             if abs(map_drone_x - rect.right) > abs(map_drone_x - rect.left): 
@@ -224,8 +226,26 @@ def find_closest_rectangle(x, y, rectangles):
                 start_x = rect.right
 
             vertical = False
+            current_x = next_x = 0
+            i = 0
+            A = abs(rect.top - rect.bottom) - SAFE_DISTANCE
+            while current_x < goal_x:
+                next_x = current_x + PERIOD/NUMBER_OF_STEPS
+                if next_x > goal_x:
+                    next_x = goal_x
 
-        else: # Retangulo vertical
+                current_y   = A*np.sin(current_x    * 2*np.pi/PERIOD)
+                next_y      = A*np.sin(next_x       * 2*np.pi/PERIOD)
+                current_point = (current_x, current_y)
+                next_point = (next_x, next_y)
+
+                trajectory[i] = current_point
+                trajectory[i+1] = next_point
+                i += 2
+
+                current_x = next_x
+
+        else:
             start_x = goal_x = (rect.right + rect.left)/2
 
             if abs(map_drone_y - rect.top) > abs(map_drone_y - rect.bottom): 
@@ -236,39 +256,28 @@ def find_closest_rectangle(x, y, rectangles):
                 start_y = rect.top
 
             vertical = True
+            current_y = next_y = 0
+            i = 0
+            A = abs(rect.right - rect.left) - SAFE_DISTANCE 
+            while current_y < goal_y:
+                next_y = current_y + PERIOD/NUMBER_OF_STEPS
+                if next_y > goal_y:
+                    next_y = goal_y
 
-        start_x = (start_x - map_data.info.width/2)*map_data.info.resolution
-        start_y = (map_data.info.height/2 - start_y)*map_data.info.resolution
+                current_x   = A*np.sin(current_y    * 2*np.pi/PERIOD)
+                next_x      = A*np.sin(next_y       * 2*np.pi/PERIOD)
+                current_point = (current_x, current_y)
+                next_point = (next_x, next_y)
 
-        start = find_safety(map_pose(start_x, start_y))
-        go_to(start, n)
+                trajectory[i] = current_point
+                trajectory[i+1] = next_point
+                i += 2
 
-        goal_x = (goal_x - map_data.info.width/2)*map_data.info.resolution
-        goal_y = (map_data.info.height/2 - goal_y)*map_data.info.resolution
+                current_y = next_y
         
-        A = abs(rect.right - rect.left) - SAFE_DISTANCE if vertical else abs(rect.top - rect.bottom) - SAFE_DISTANCE
-        A *= map_data.info.resolution
-    
-        drone_x = pose_data.pose.position.x
-        drone_y = pose_data.pose.position.y
+        sweep.append(trajectory)
+        # Problema: current_x e current_y podem não estar atualizados ao sairem do loop
+        map_drone_x = current_x
+        map_drone_y = current_y
 
-        t0 = rospy.get_time()
-        print( "Vertical? {0}\n Drone_x: {1}\tGoal_x: {2}\nDrone_y: {3}\tGoal_y: {4}".format(vertical, drone_x, goal_x, drone_y, goal_y) )
-        print( (( not vertical and abs(drone_x - goal_x) > GOAL_DIST ) or (vertical and abs(drone_y - goal_y) > GOAL_DIST )) )
-        
-        while not rospy.is_shutdown and (( not vertical and abs(drone_x - goal_x) > GOAL_DIST ) or (vertical and abs(drone_y - goal_y) > GOAL_DIST )):
-            
-            drone_x = pose_data.pose.position.x
-            drone_y = pose_data.pose.position.y
-
-            vel_factor_x = 1.1 - 1/(DEACCELERATION * abs(drone_x - goal_x))
-            vel_factor_y = 1.1 - 1/(DEACCELERATION * abs(drone_y - goal_y))
-            
-            t = rospy.get_time - t0
-            x_vel = -A*np.cos(t) if vertical else 1
-            y_vel = 1 if vertical else -A*np.cos(t)
-
-            x_vel *= vel_factor_x if vel_factor_x > 0 else 0.1
-            y_vel *= vel_factor_y if vel_factor_y > 0 else 0.1
-
-            mav.set_vel(x_vel, y_vel, 0)
+    return sweep
