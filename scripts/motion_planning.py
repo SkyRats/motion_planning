@@ -171,7 +171,7 @@ class grid_motion_planning:
             i = i + 1
         distances = sorted(distances.items(), key=lambda x:x[1], reverse=False)
         selected_point = path[distances[0][0]][0]
-        return self.reconstruct_path(self.A_star(selected_point,n), selected_point)
+        return self.A_star(selected_point,n)
 
     def follow_trajectory(self,trajectory,initial_height):
         mav = MAV("1")
@@ -243,7 +243,7 @@ class grid_motion_planning:
             for sucessor in self.adj_pose(current):
                 if sucessor == goal:
                     camefrom[sucessor] = current
-                    return camefrom
+                    return self.reconstruct_path(camefrom, goal)
 
                 if self.map_data.data[sucessor] == -1 or self.obstacles.has_key(sucessor) or self.inflated_grid[sucessor] == 100:
                     continue
