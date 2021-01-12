@@ -169,7 +169,7 @@ def find_rectangles():
                 top = i[1]
                 bottom = j[1]
 
-            value = np.sum( gray_map[bottom:top+1, left:right+1] )
+            value = np.sum( gray_map[bottom:top, left:right] )
             area = (top - bottom) * (right - left)
             if value < MAP_COLOR * OBSTACLE_THRESH * area:
                 tr = (right, top)
