@@ -100,32 +100,69 @@ def calculate_sweep(map, n):
 
     return sweep
 
-def close(x, y):
-    return True if abs(x-y) < CLOSENESS_THRESH else False
+def find_closest_rectangle(x, y, rectangles):
+    closest_rectangle = None
+    min_distance = 1000
+    for rect in rectangles:
+        dr, dl, dt, db = calculate_rectangle_distances(x, y, rect)
 
-def intersecting(inner, outer):
-    counter = 0
-    output = None
-    if  outer.bottom - CLOSENESS_THRESH < inner.top < outer.top + CLOSENESS_THRESH and outer.bottom - CLOSENESS_THRESH < inner.bottom < outer.top + CLOSENESS_THRESH:
-        counter += 2
-        
-        if inner.left < outer.right and inner.right > outer.right: 
-            output = "right"
-        elif inner.left < outer.left and inner.right > outer.left:
-            output = "left"
-        
-    if outer.left - CLOSENESS_THRESH < inner.right < outer.right + CLOSENESS_THRESH and outer.left - CLOSENESS_THRESH < inner.left < outer.right + CLOSENESS_THRESH:
-        counter += 2
-        
-        if inner.bottom < outer.bottom and inner.top > outer.bottom:
-            output = "bottom"
-        elif inner.bottom < outer.top and inner.top > outer.top:
-            output = "top"
-    
-    if counter == 4:
-        output = "inside"
+        rectangle_min_distance = min(dr, dl, dt, db)
+        if rectangle_min_distance < min_distance:
+            min_distance = rectangle_min_distance
+            closest_rectangle = rect
+    return closest_rectangle 
 
-    return output    
+def calculate_rectangle_distances(x, y, rectangle):
+    distance_right  = (x - rectangle.right)**2 + (y - (rectangle.top + rectangle.bottom)/2)**2
+    distance_left   = (x - rectangle.left)**2  + (y - (rectangle.top + rectangle.bottom)/2)**2
+    distance_top    = (x - (rectangle.right + rectangle.left)/2)**2  + (y - rectangle.top)**2
+    distance_bottom = (x - (rectangle.right + rectangle.left)/2)**2  + (y - rectangle.bottom)**2
+    return distance_right, distance_left, distance_top, distance_bottom
+
+def find_rectangles(map):
+    gray_map = np.array(map * 255, dtype=np.uint8)
+
+    corners = []
+    cnts, _ = cv2.findContours(gray_map, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
+    for cnt in cnts:
+        epsilon = cv2.arcLength(cnt, True)*0.01
+        approx = cv2.approxPolyDP(cnt, epsilon, True)
+        for point in approx.tolist():
+            corners.append(point[0])
+
+    rectangles = []
+    bottom = top = right = left = 0
+        
+    for i in corners:
+        for j in corners:
+            
+            if i[0] <= j[0]:
+                right = j[0]
+                left = i[0]
+            else:
+                right = i[0]
+                left = j[0]
+
+            if i[1] <= j[1]:
+                top = j[1]
+                bottom = i[1]
+            else:
+                top = i[1]
+                bottom = j[1]
+
+            value = np.sum( gray_map[bottom:top+1, left:right+1] )
+            area = (top - bottom) * (right - left)
+            if value < MAP_COLOR * OBSTACLE_THRESH * area:
+                tr = (right, top)
+                bl = (left, bottom)
+                rect = Rectangle(right, left, top, bottom)
+                rectangles.append(rect)
+
+    rectangles = simplify_rectangles(rectangles)
+    rectangles = remove_intersection(rectangles)
+    print("# de retangulos: ", len(rectangles))
+
+    return rectangles
 
 def simplify_rectangles(rectangles):
     new_rectangles = []
@@ -203,66 +240,29 @@ def remove_intersection(rectangles):
         print("# rectangles inter", len(new_rectangles))
         return remove_intersection(new_rectangles)
 
-def find_rectangles(map):
-    gray_map = np.array(map * 255, dtype=np.uint8)
+def close(x, y):
+    return True if abs(x-y) < CLOSENESS_THRESH else False
 
-    corners = []
-    cnts, _ = cv2.findContours(gray_map, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
-    for cnt in cnts:
-        epsilon = cv2.arcLength(cnt, True)*0.01
-        approx = cv2.approxPolyDP(cnt, epsilon, True)
-        for point in approx.tolist():
-            corners.append(point[0])
-
-    rectangles = []
-    bottom = top = right = left = 0
+def intersecting(inner, outer):
+    counter = 0
+    output = None
+    if  outer.bottom - CLOSENESS_THRESH < inner.top < outer.top + CLOSENESS_THRESH and outer.bottom - CLOSENESS_THRESH < inner.bottom < outer.top + CLOSENESS_THRESH:
+        counter += 2
         
-    for i in corners:
-        for j in corners:
-            
-            if i[0] <= j[0]:
-                right = j[0]
-                left = i[0]
-            else:
-                right = i[0]
-                left = j[0]
+        if inner.left < outer.right and inner.right > outer.right: 
+            output = "right"
+        elif inner.left < outer.left and inner.right > outer.left:
+            output = "left"
+        
+    if outer.left - CLOSENESS_THRESH < inner.right < outer.right + CLOSENESS_THRESH and outer.left - CLOSENESS_THRESH < inner.left < outer.right + CLOSENESS_THRESH:
+        counter += 2
+        
+        if inner.bottom < outer.bottom and inner.top > outer.bottom:
+            output = "bottom"
+        elif inner.bottom < outer.top and inner.top > outer.top:
+            output = "top"
+    
+    if counter == 4:
+        output = "inside"
 
-            if i[1] <= j[1]:
-                top = j[1]
-                bottom = i[1]
-            else:
-                top = i[1]
-                bottom = j[1]
-
-            value = np.sum( gray_map[bottom:top+1, left:right+1] )
-            area = (top - bottom) * (right - left)
-            if value < MAP_COLOR * OBSTACLE_THRESH * area:
-                tr = (right, top)
-                bl = (left, bottom)
-                rect = Rectangle(right, left, top, bottom)
-                rectangles.append(rect)
-
-    rectangles = simplify_rectangles(rectangles)
-    rectangles = remove_intersection(rectangles)
-    print("# de retangulos: ", len(rectangles))
-
-    return rectangles
-
-def calculate_rectangle_distances(x, y, rectangle):
-    distance_right  = (x - rectangle.right)**2 + (y - (rectangle.top + rectangle.bottom)/2)**2
-    distance_left   = (x - rectangle.left)**2  + (y - (rectangle.top + rectangle.bottom)/2)**2
-    distance_top    = (x - (rectangle.right + rectangle.left)/2)**2  + (y - rectangle.top)**2
-    distance_bottom = (x - (rectangle.right + rectangle.left)/2)**2  + (y - rectangle.bottom)**2
-    return distance_right, distance_left, distance_top, distance_bottom
-
-def find_closest_rectangle(x, y, rectangles):
-    closest_rectangle = None
-    min_distance = 1000
-    for rect in rectangles:
-        dr, dl, dt, db = calculate_rectangle_distances(x, y, rect)
-
-        rectangle_min_distance = min(dr, dl, dt, db)
-        if rectangle_min_distance < min_distance:
-            min_distance = rectangle_min_distance
-            closest_rectangle = rect
-    return closest_rectangle 
+    return output    
