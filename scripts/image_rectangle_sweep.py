@@ -1,6 +1,6 @@
 import numpy as np
 
-from .motion_planning import grid_motion_planning
+from motion_planning import grid_motion_planning
 
 import cv2
 from collections import namedtuple
@@ -13,14 +13,31 @@ SAFE_DISTANCE = 1 # Se aplica aos dois lados
 PERIOD = 100
 NUMBER_OF_STEPS = 20
 
+map = cv2.imread("testes/map_v4.png")
+gray_map = cv2.cvtColor(map, cv2.COLOR_BGR2GRAY)
+cv2.threshold(gray_map, 100, 255, cv2.THRESH_TOZERO, dst=gray_map)
+
 Rectangle = namedtuple('Rectangle', 'right left top bottom')
 
-def testWithImage():
-    map = cv2.imread("map_v4.png")
-    gray_map = cv2.cvtColor(map, cv2.COLOR_BGR2GRAY)
-    calculate_sweep(map, N)
+def testSweep():
+    calculate_sweep(N)
 
-def calculate_sweep(map, n):
+def testRectangles():
+    rectangles = find_rectangles()
+    drawRectangles(rectangles)
+    cv2.imshow("map", map)
+    cv2.imwrite("result.png", map)
+    if cv2.waitKey(0) == 27:
+        return
+
+def drawRectangles(rectangles, color=(0,0,255)):
+    global map
+    for rect in rectangles:
+        topright = (rect.right, rect.top)
+        bottomleft = (rect.left, rect.bottom)
+        cv2.rectangle(map, topright, bottomleft, color, thickness=1)
+
+def calculate_sweep(n):
 
     sweep = []
     rectangles = find_rectangles(map)
@@ -119,8 +136,9 @@ def calculate_rectangle_distances(x, y, rectangle):
     distance_bottom = (x - (rectangle.right + rectangle.left)/2)**2  + (y - rectangle.bottom)**2
     return distance_right, distance_left, distance_top, distance_bottom
 
-def find_rectangles(map):
-    gray_map = np.array(map * 255, dtype=np.uint8)
+def find_rectangles():
+    global map
+    global gray_map
 
     corners = []
     cnts, _ = cv2.findContours(gray_map, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
@@ -129,10 +147,11 @@ def find_rectangles(map):
         approx = cv2.approxPolyDP(cnt, epsilon, True)
         for point in approx.tolist():
             corners.append(point[0])
+            cv2.circle(map, tuple(point[0]), 1, (0,0,255), thickness=2)
 
     rectangles = []
     bottom = top = right = left = 0
-        
+            
     for i in corners:
         for j in corners:
             
@@ -158,9 +177,11 @@ def find_rectangles(map):
                 rect = Rectangle(right, left, top, bottom)
                 rectangles.append(rect)
 
+    print("# rectangles detected ", len(rectangles))
+
     rectangles = simplify_rectangles(rectangles)
     rectangles = remove_intersection(rectangles)
-    print("# de retangulos: ", len(rectangles))
+    print("# rectangles (final): ", len(rectangles))
 
     return rectangles
 
@@ -266,3 +287,6 @@ def intersecting(inner, outer):
         output = "inside"
 
     return output    
+
+if __name__ == "__main__":
+    testRectangles()
