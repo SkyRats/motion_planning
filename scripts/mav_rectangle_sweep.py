@@ -130,7 +130,6 @@ def remove_intersection(rectangles):
 
 def find_rectangles(map):
     gray_map = np.array(map * 255, dtype=np.uint8)
-    # cv2.threshold(gray_map, 100, 255, cv2.THRESH_TOZERO, dst=gray_map)
 
     corners = []
     cnts, _ = cv2.findContours(gray_map, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
