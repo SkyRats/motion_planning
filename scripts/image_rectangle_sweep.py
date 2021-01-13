@@ -1,8 +1,6 @@
 import numpy as np
-
-from motion_planning import grid_motion_planning
-
 import cv2
+
 from collections import namedtuple
     
 OBSTACLE_THRESH = 0.065
