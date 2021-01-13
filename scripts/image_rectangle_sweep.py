@@ -47,16 +47,16 @@ def calculate_sweep():
     sweep = []
     rectangles = find_rectangles()
 
-    map_drone_x = 290
-    map_drone_y = 190
-    cv2.circle(map, (map_drone_x, map_drone_y), 1, (0,0,255), thickness=2)
+    drone_x = 290
+    drone_y = 190
+    cv2.circle(map, (drone_x, drone_y), 1, (0,0,255), thickness=2)
 
     while len(rectangles) != 0:
 
         print(len(rectangles))
 
         trajectory = []
-        rect = find_closest_rectangle(map_drone_x, map_drone_y, rectangles)
+        rect = find_closest_rectangle(drone_x, drone_y, rectangles)
         rectangles.remove(rect)
 
         w = rect.top - rect.bottom 
