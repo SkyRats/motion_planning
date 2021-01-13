@@ -43,15 +43,17 @@ def drawRectangles(rectangles, color=(0,0,255)):
         bottomleft = (rect.left, rect.bottom)
         cv2.rectangle(map, topright, bottomleft, color, thickness=1)
 
-def calculate_sweep(n):
-
+def calculate_sweep():
     sweep = []
-    rectangles = find_rectangles(map)
+    rectangles = find_rectangles()
 
-    map_drone_x = 130
-    map_drone_y = 60
+    map_drone_x = 290
+    map_drone_y = 190
+    cv2.circle(map, (map_drone_x, map_drone_y), 1, (0,0,255), thickness=2)
 
     while len(rectangles) != 0:
+
+        print(len(rectangles))
 
         trajectory = []
         rect = find_closest_rectangle(map_drone_x, map_drone_y, rectangles)
@@ -61,9 +63,9 @@ def calculate_sweep(n):
         h = rect.right - rect.left
 
         current_x = current_y = 0
-        i = 0
+        start_x = start_y = 0
 
-        if abs(rect.right - rect.left) > abs(rect.top - rect.bottom):
+        if abs(rect.right - rect.left) > abs(rect.top - rect.bottom):   # Rectangle is horizontal
             start_y = goal_y = (rect.top + rect.bottom)/2
             
             if abs(map_drone_x - rect.right) > abs(map_drone_x - rect.left): 
@@ -72,21 +74,23 @@ def calculate_sweep(n):
             else: 
                 goal_x = rect.left
                 start_x = rect.right
+            current_x = start_x
 
             A = abs(rect.top - rect.bottom) - SAFE_DISTANCE
-            while current_x < goal_x:
-                next_x = current_x + PERIOD/NUMBER_OF_STEPS
-                if next_x > goal_x:
-                    next_x = goal_x
-
-                current_y   = A*np.sin(current_x    * 2*np.pi/PERIOD)
-                trajectory[i] = (current_x, current_y)
+            while current_x <= goal_x:
+                current_y = A*np.sin(current_x * 2*np.pi/PERIOD)
+                current_y = start_y + int( np.floor(current_y) )
+                trajectory.append( (current_x, current_y) )
 
                 if current_x == goal_x:
                     break
-                elif current_x + PERIOD/NUMBER_OF_STEPS > goal_x:
+                elif current_x > goal_x:
                     current_x = goal_x
-        else:
+                else:
+                    current_x += PERIOD//NUMBER_OF_STEPS
+
+
+        else: # Rectangle is vertical
             start_x = goal_x = (rect.right + rect.left)/2
 
             if abs(map_drone_y - rect.top) > abs(map_drone_y - rect.bottom): 
@@ -95,16 +99,23 @@ def calculate_sweep(n):
             else: 
                 goal_y = rect.bottom
                 start_y = rect.top
+            current_y = start_y
 
-            A = abs(rect.right - rect.left) - SAFE_DISTANCE 
+            A = abs(rect.right - rect.left) - SAFE_DISTANCE
             while current_y <= goal_y:
-                current_x   = A*np.sin(current_y    * 2*np.pi/PERIOD)
-                trajectory[i] = (current_x, current_y)
+                current_x = A*np.sin(current_y* 2*np.pi/PERIOD)
+                current_x = start_x + int( np.floor(current_x) )
+                trajectory.append( (current_x, current_y) ) 
                 
                 if current_y == goal_y:
                     break
-                elif current_y + PERIOD/NUMBER_OF_STEPS > goal_y:
+                elif current_y > goal_y:
                     current_y = goal_y
+                else:
+                    current_y += PERIOD//NUMBER_OF_STEPS
+        
+        sweep.append( (start_x, start_y) )
+        sweep.extend(trajectory)
         
         map_drone_x = current_x
         map_drone_y = current_y
@@ -285,4 +296,4 @@ def intersecting(inner, outer):
     return output    
 
 if __name__ == "__main__":
-    testRectangles()
+    testSweep()
