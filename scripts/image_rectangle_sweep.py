@@ -22,7 +22,13 @@ cv2.threshold(gray_map, 100, 255, cv2.THRESH_TOZERO, dst=gray_map)
 Rectangle = namedtuple('Rectangle', 'right left top bottom')
 
 def testSweep():
-    calculate_sweep(N)
+    sweep = calculate_sweep()
+    for point in sweep:
+        cv2.circle(map, point, 1, (0,255,0))
+    cv2.imshow("map", map)
+    cv2.imwrite("result.png", map)
+    if cv2.waitKey(0) == 27:
+        return
 
 def testRectangles():
     rectangles = find_rectangles()
