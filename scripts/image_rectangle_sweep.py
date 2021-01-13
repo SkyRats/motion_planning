@@ -11,7 +11,7 @@ SAFE_DISTANCE = 1 # Se aplica aos dois lados
 PERIOD = 10
 NUMBER_OF_STEPS = 10
 
-DEBUG = False
+DEBUG = True
 
 map = cv2.imread("testes/map_v4.png")
 gray_map = cv2.cvtColor(map, cv2.COLOR_BGR2GRAY)
@@ -188,6 +188,9 @@ def find_rectangles():
     rectangles = simplify_rectangles(rectangles)
     rectangles = remove_intersection(rectangles)
     print("# rectangles (final): ", len(rectangles))
+
+    if DEBUG:
+        drawRectangles(rectangles)
 
     return rectangles
 
