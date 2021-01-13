@@ -132,10 +132,10 @@ def find_closest_rectangle(x, y, rectangles):
     return closest_rectangle 
 
 def calculate_rectangle_distances(x, y, rectangle):
-    distance_right  = (x - rectangle.right)**2 + (y - (rectangle.top + rectangle.bottom)/2)**2
-    distance_left   = (x - rectangle.left)**2  + (y - (rectangle.top + rectangle.bottom)/2)**2
-    distance_top    = (x - (rectangle.right + rectangle.left)/2)**2  + (y - rectangle.top)**2
-    distance_bottom = (x - (rectangle.right + rectangle.left)/2)**2  + (y - rectangle.bottom)**2
+    distance_right  = np.sqrt( (x - rectangle.right)**2 + (y - (rectangle.top + rectangle.bottom)/2)**2 )
+    distance_left   = np.sqrt( (x - rectangle.left)**2  + (y - (rectangle.top + rectangle.bottom)/2)**2 )
+    distance_top    = np.sqrt( (x - (rectangle.right + rectangle.left)/2)**2  + (y - rectangle.top)**2 )
+    distance_bottom = np.sqrt( (x - (rectangle.right + rectangle.left)/2)**2  + (y - rectangle.bottom)**2 )
     return distance_right, distance_left, distance_top, distance_bottom
 
 def find_rectangles():
