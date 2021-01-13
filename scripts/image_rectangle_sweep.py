@@ -62,11 +62,10 @@ def calculate_sweep():
         w = rect.top - rect.bottom 
         h = rect.right - rect.left
 
-        current_x = current_y = 0
         start_x = start_y = 0
 
         if abs(rect.right - rect.left) > abs(rect.top - rect.bottom):   # Rectangle is horizontal
-            start_y = goal_y = (rect.top + rect.bottom)/2
+            start_y = (rect.top + rect.bottom)/2
             
             if abs(map_drone_x - rect.right) > abs(map_drone_x - rect.left): 
                 goal_x = rect.right 
@@ -91,7 +90,7 @@ def calculate_sweep():
 
 
         else: # Rectangle is vertical
-            start_x = goal_x = (rect.right + rect.left)/2
+            start_x = (rect.right + rect.left)/2
 
             if abs(map_drone_y - rect.top) > abs(map_drone_y - rect.bottom): 
                 goal_y = rect.top
