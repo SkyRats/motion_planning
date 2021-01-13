@@ -59,11 +59,6 @@ def calculate_sweep(n):
 
         w = rect.top - rect.bottom 
         h = rect.right - rect.left
-        # if w < 2 * DRONE_RADIUS or h < 2 * DRONE_RADIUS:
-        #     continue
-
-        start = find_safety(map_pose(start_x, start_y))
-        sweep.append( grid_motion_planning.A_star(start, n) )
 
         current_x = current_y = 0
         i = 0
@@ -78,7 +73,6 @@ def calculate_sweep(n):
                 goal_x = rect.left
                 start_x = rect.right
 
-            # Rectangle is horizontal
             A = abs(rect.top - rect.bottom) - SAFE_DISTANCE
             while current_x < goal_x:
                 next_x = current_x + PERIOD/NUMBER_OF_STEPS
@@ -88,12 +82,10 @@ def calculate_sweep(n):
                 current_y   = A*np.sin(current_x    * 2*np.pi/PERIOD)
                 trajectory[i] = (current_x, current_y)
 
-                i += 1
                 if current_x == goal_x:
                     break
                 elif current_x + PERIOD/NUMBER_OF_STEPS > goal_x:
                     current_x = goal_x
-
         else:
             start_x = goal_x = (rect.right + rect.left)/2
 
@@ -104,20 +96,16 @@ def calculate_sweep(n):
                 goal_y = rect.bottom
                 start_y = rect.top
 
-            # Rectangle is vertical
             A = abs(rect.right - rect.left) - SAFE_DISTANCE 
             while current_y <= goal_y:
                 current_x   = A*np.sin(current_y    * 2*np.pi/PERIOD)
                 trajectory[i] = (current_x, current_y)
                 
-                i += 1
                 if current_y == goal_y:
                     break
                 elif current_y + PERIOD/NUMBER_OF_STEPS > goal_y:
                     current_y = goal_y
         
-        sweep.append(trajectory)
-        # Problema: current_x e current_y podem não estar atualizados ao sairem do loop
         map_drone_x = current_x
         map_drone_y = current_y
 
