@@ -65,61 +65,56 @@ def calculate_sweep():
         start_x = start_y = 0
 
         if abs(rect.right - rect.left) > abs(rect.top - rect.bottom):   # Rectangle is horizontal
-            start_y = (rect.top + rect.bottom)/2
-            
-            if abs(map_drone_x - rect.right) > abs(map_drone_x - rect.left): 
-                goal_x = rect.right 
-                start_x = rect.left
-            else: 
-                goal_x = rect.left
-                start_x = rect.right
-            current_x = start_x
+            start_y = (rect.top + rect.bottom)//2
+            start_x, goal_x, direction = calculate_start_goal_direction(drone_x, rect.right, rect.left)
 
-            A = abs(rect.top - rect.bottom) - SAFE_DISTANCE
-            while current_x <= goal_x:
-                current_y = A*np.sin(current_x * 2*np.pi/PERIOD)
-                current_y = start_y + int( np.floor(current_y) )
-                trajectory.append( (current_x, current_y) )
-
-                if current_x == goal_x:
-                    break
-                elif current_x > goal_x:
-                    current_x = goal_x
-                else:
-                    current_x += PERIOD//NUMBER_OF_STEPS
-
+            A = (rect.top - rect.bottom)//2
+            A = A - SAFE_DISTANCE if A > SAFE_DISTANCE else A
+            trajectory = calculate_sine_trajectory(start_x, start_y, goal_x, A, direction, True)
 
         else: # Rectangle is vertical
-            start_x = (rect.right + rect.left)/2
+            start_x = (rect.right + rect.left)//2
+            start_y, goal_y, direction = calculate_start_goal_direction(drone_y, rect.top, rect.bottom)
 
-            if abs(map_drone_y - rect.top) > abs(map_drone_y - rect.bottom): 
-                goal_y = rect.top
-                start_y = rect.bottom
-            else: 
-                goal_y = rect.bottom
-                start_y = rect.top
-            current_y = start_y
-
-            A = abs(rect.right - rect.left) - SAFE_DISTANCE
-            while current_y <= goal_y:
-                current_x = A*np.sin(current_y* 2*np.pi/PERIOD)
-                current_x = start_x + int( np.floor(current_x) )
-                trajectory.append( (current_x, current_y) ) 
-                
-                if current_y == goal_y:
-                    break
-                elif current_y > goal_y:
-                    current_y = goal_y
-                else:
-                    current_y += PERIOD//NUMBER_OF_STEPS
+            A = (rect.right - rect.left)//2
+            A = A - SAFE_DISTANCE if A > SAFE_DISTANCE else A
+            trajectory = calculate_sine_trajectory(start_y, start_x, goal_y, A, direction, False)
+        
+        assert(len(trajectory) > 0), "Rectangle could not be swept"
         
         sweep.append( (start_x, start_y) )
         sweep.extend(trajectory)
-        
-        map_drone_x = current_x
-        map_drone_y = current_y
+
+        drone_x = trajectory[-1][0]
+        drone_y = trajectory[-1][1]
 
     return sweep
+
+def calculate_sine_trajectory(t_start, sin_t_start, t_goal, amplitude, direction, horizontal):
+    trajectory = []
+    t = t_start
+    while True:
+        sin_t = amplitude * np.sin(t * 2*np.pi/PERIOD)
+        sin_t = sin_t_start + int( np.floor(sin_t) )
+        
+        if horizontal:
+            trajectory.append( (t, sin_t) )
+        else:
+            trajectory.append( (sin_t, t) )
+        
+        if t == t_goal:
+            break
+        elif direction * t > direction * t_goal:
+            t = t_goal
+        else:
+            t += direction * PERIOD//NUMBER_OF_STEPS
+    return trajectory
+
+def calculate_start_goal_direction(drone, rect_greater, rect_smaller):
+    if abs(drone - rect_greater) > abs(drone - rect_smaller): 
+        return rect_smaller, rect_greater, 1
+    else: 
+        return rect_greater, rect_smaller, -1
 
 def find_closest_rectangle(x, y, rectangles):
     closest_rectangle = None
