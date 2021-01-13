@@ -5,13 +5,15 @@ from motion_planning import grid_motion_planning
 import cv2
 from collections import namedtuple
     
-OBSTACLE_THRESH = 0.04
+OBSTACLE_THRESH = 0.065
 CLOSENESS_THRESH = 3
 MAP_COLOR = 255
 DRONE_RADIUS = 0.4
 SAFE_DISTANCE = 1 # Se aplica aos dois lados
-PERIOD = 100
-NUMBER_OF_STEPS = 20
+PERIOD = 10
+NUMBER_OF_STEPS = 10
+
+DEBUG = False
 
 map = cv2.imread("testes/map_v4.png")
 gray_map = cv2.cvtColor(map, cv2.COLOR_BGR2GRAY)
@@ -147,7 +149,9 @@ def find_rectangles():
         approx = cv2.approxPolyDP(cnt, epsilon, True)
         for point in approx.tolist():
             corners.append(point[0])
-            cv2.circle(map, tuple(point[0]), 1, (0,0,255), thickness=2)
+
+            if DEBUG:
+                cv2.circle(map, tuple(point[0]), 1, (0,0,255), thickness=2)
 
     rectangles = []
     bottom = top = right = left = 0
