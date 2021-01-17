@@ -7,11 +7,11 @@ OBSTACLE_THRESH = 0.065
 CLOSENESS_THRESH = 3
 MAP_COLOR = 255
 DRONE_RADIUS = 0.4
-SAFE_DISTANCE = 1 # Se aplica aos dois lados
-PERIOD = 10
-NUMBER_OF_STEPS = 10
+SAFE_DISTANCE = 3 # Se aplica aos dois lados
+PERIOD = 20
+NUMBER_OF_STEPS = 20 
 
-DEBUG = True
+DEBUG = False
 
 map = cv2.imread("testes/map_v4.png")
 gray_map = cv2.cvtColor(map, cv2.COLOR_BGR2GRAY)
