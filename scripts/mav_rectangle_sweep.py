@@ -172,78 +172,76 @@ class rectangle_sweep:
     def simplify_rectangles(self):
         new_rectangles = []
         simplified = []
-                
-        for i in self._rectangles:
-            if i in simplified:
-                continue
-
-            for j in self._rectangles:
-                if j in simplified or i == j:
+        while True::      
+            for i in self._rectangles:
+                if i in simplified:
                     continue
-                            
-                if close(i.right, j.right) and close(i.left, j.left): # Proximos em X
-                    if close(i.top, j.bottom) or close(i.bottom, j.top):
-                        new_rect = Rectangle( i.right, i.left, max(i.top, j.top), min(i.bottom, j.bottom) )
-                        new_rectangles.append(new_rect)
-                        simplified.append(i)
-                        simplified.append(j)
-                elif close(i.top, j.top) and close(i.bottom, j.bottom): # Proximos em Y
-                    if close(i.right, j.left) or close(i.left, j.right):
-                        new_rect = Rectangle( max(i.right, j.right), min(i.left, j.left), i.top, i.bottom )
-                        new_rectangles.append(new_rect)
-                        simplified.append(i)
-                        simplified.append(j)
 
-        for k in self._rectangles:
-            if k not in new_rectangles and k not in simplified:
-                new_rectangles.append(k)
+                for j in self._rectangles:
+                    if j in simplified or i == j:
+                        continue
+                                
+                    if close(i.right, j.right) and close(i.left, j.left): # Proximos em X
+                        if close(i.top, j.bottom) or close(i.bottom, j.top):
+                            new_rect = Rectangle( i.right, i.left, max(i.top, j.top), min(i.bottom, j.bottom) )
+                            new_rectangles.append(new_rect)
+                            simplified.append(i)
+                            simplified.append(j)
+                    elif close(i.top, j.top) and close(i.bottom, j.bottom): # Proximos em Y
+                        if close(i.right, j.left) or close(i.left, j.right):
+                            new_rect = Rectangle( max(i.right, j.right), min(i.left, j.left), i.top, i.bottom )
+                            new_rectangles.append(new_rect)
+                            simplified.append(i)
+                            simplified.append(j)
 
-        if len(new_rectangles) == len(rectangles):
-            self._rectangles = new_rectangles
-        else:
-            print("# rectangles simplified", len(new_rectangles))
-            self._rectangles = simplify_rectangles(new_rectangles)
+            for k in self._rectangles:
+                if k not in new_rectangles and k not in simplified:
+                    new_rectangles.append(k)
+            
+            if len(self._rectangles) == len(new_rectangles):
+                break
+        
+        self._rectangles = new_rectangles
 
     def remove_intersection(self):
         new_rectangles = []
         removed_intersection = []
-                
-        for i in self._rectangles:
-            if i in removed_intersection:
-                continue
-
-            for j in self._rectangles:
-                if j in removed_intersection or i == j:
+        while True:
+            for i in self._rectangles:
+                if i in removed_intersection:
                     continue
-                
-                intersection = intersecting(i, j)
-                
-                if intersection != None and intersection != "inside":
-                    if intersection == "right":
-                        new_rect = Rectangle( i.right, j.right, i.top, i.bottom )
-                    elif intersection == "left":
-                        new_rect = Rectangle( j.left, i.left, i.top, i.bottom )
-                    elif intersection == "top":
-                        new_rect = Rectangle( i.right, i.left, i.top, j.top )
-                    elif intersection == "bottom":
-                        new_rect = Rectangle( i.right, i.left, j.bottom, i.bottom )
-                    new_rectangles.append(new_rect)
-                    removed_intersection.append(i)
 
-                if intersection == "inside":
-                    new_rectangles.append(j)
-                    removed_intersection.append(i)
-                    removed_intersection.append(j)
+                for j in self._rectangles:
+                    if j in removed_intersection or i == j:
+                        continue
+                    
+                    intersection = intersecting(i, j)
+                    
+                    if intersection != None and intersection != "inside":
+                        if intersection == "right":
+                            new_rect = Rectangle( i.right, j.right, i.top, i.bottom )
+                        elif intersection == "left":
+                            new_rect = Rectangle( j.left, i.left, i.top, i.bottom )
+                        elif intersection == "top":
+                            new_rect = Rectangle( i.right, i.left, i.top, j.top )
+                        elif intersection == "bottom":
+                            new_rect = Rectangle( i.right, i.left, j.bottom, i.bottom )
+                        new_rectangles.append(new_rect)
+                        removed_intersection.append(i)
 
-        for k in self._rectangles:
-            if k not in new_rectangles and k not in removed_intersection:
-                new_rectangles.append(k)
+                    if intersection == "inside":
+                        new_rectangles.append(j)
+                        removed_intersection.append(i)
+                        removed_intersection.append(j)
 
-        if len(new_rectangles) == len(rectangles):
-            self._rectangles = new_rectangles
-        else:
-            print("# rectangles inter", len(new_rectangles))
-            self._rectangles = remove_intersection(new_rectangles)
+            for k in self._rectangles:
+                if k not in new_rectangles and k not in removed_intersection:
+                    new_rectangles.append(k)
+
+            if len(self._rectangles) == len(new_rectangles):
+                break
+        
+        self._rectangles = new_rectangles
 
     def close(self, x, y):
         return True if abs(x-y) < CLOSENESS_THRESH else False
