@@ -1,6 +1,6 @@
 import rospy
 import numpy as np
-from MAV import MAV
+from mavbase.MAV import MAV
 from nav_msgs.msg import OccupancyGrid
 from geometry_msgs.msg import PoseStamped
 from scipy.ndimage import morphology
@@ -8,10 +8,10 @@ import math
 from random import randint
 from time import time
 
+import matplotlib.pyplot as plt
+
 ######### PARAMETERS #########
 
-#speed multiplier
-speed_multiplier = 5
 #velocity mask
 MASK_VELOCITY = 0b0000011111000111 
 
@@ -26,12 +26,18 @@ class grid_motion_planning:
         self.map_data = OccupancyGrid()
         self.pose_data = PoseStamped()
         self.inflated_grid = []
-        self.obstacles = {}
+        self.grid_2d = []
 
         #drone radius
         self.r = 0.4
         #safety parameter
-        self.safety = 0.8
+        self.safety = 1
+        #speed parameters
+        self.speed_multiplier = 5
+
+
+        rospy.wait_for_message("/map", OccupancyGrid)
+        self.n = int((self.r + self.safety)/self.map_data.info.resolution)
 
     def distance(self,x1,y1,x2,y2):
         #calculates the distance between two points, ignoring obstacles
@@ -76,15 +82,6 @@ class grid_motion_planning:
             if self.map_data.data[a] == -1:
                 return True
         return False
-    
-    def is_obstacle_frontier(self,position):
-        #detects if the m:ap point given is a frontier between an object and free space
-        if self.map_data.data[position] != 0 or self.map_data.data[position] == self.map_pose(self.pose_data.pose.position.x,self.pose_data.pose.position.y):
-            return False
-        for a in self.adj_pose(position):
-            if self.map_data.data[a] != -1 and self.map_data.data[a] != 0:
-                return True
-        return False
 
     def adj_pose(self,position):
         #returns the Occupancy Grid position of all 8 adjacent points
@@ -101,34 +98,39 @@ class grid_motion_planning:
             adj.append(position - width -1)
         return adj
     
-    def update_dilated_map(self,n):
+    def update_dilated_map(self):
         self.inflated_grid = np.array(self.map_data.data)
+
         self.inflated_grid = np.reshape(self.inflated_grid, (self.map_data.info.width,self.map_data.info.width))
-        self.inflated_grid = morphology.grey_dilation(self.inflated_grid, size=(n,n))
+        self.inflated_grid = morphology.grey_dilation(self.inflated_grid, size=(self.n,self.n))
+        self.grid_2d = self.inflated_grid
         self.inflated_grid = np.reshape(self.inflated_grid, (self.map_data.info.width*self.map_data.info.width))
+        self.manual_paint()
+        
+
+        #plt.imshow(self.grid_2d, cmap='hot', interpolation='nearest')
+        #plt.show()
         return self.inflated_grid
     
-    def dilate_obstacle(self,n, map_pose):
+    def dilate_obstacle(self, map_pose):
         #dilates the obstacle in "map_pose" in the "obstacles" dictionary
         pose = map_pose
-        for i in range(n):
-            line = ((i+1) - int((n/2)+1))*self.map_data.info.width
-            for k in range(n):
-                column = ((k+1) - int((n/2)+1))
-                if not self.obstacles.has_key(pose + line + column):
-                    self.obstacles[pose + line + column] = 1
-        self.obstacles[pose] = 2
+        for i in range(self.n):
+            line = ((i+1) - int((self.n/2)+1))*self.map_data.info.width
+            for k in range(self.n):
+                column = ((k+1) - int((self.n/2)+1))
+                self.inflated_grid[pose + line + column] = 100
     
-    def manual_paint(self,n):
+    def manual_paint(self):
         #paints manually the countours of the mission, stops WFD from going through the whole map
         for i in range(20):
-            self.dilate_obstacle(n,self.map_pose(-1,-5 + 0.5*i))
+            self.dilate_obstacle(self.map_pose(-1,-5 + 0.5*i))
         for i in range(21):
-            self.dilate_obstacle(n,self.map_pose(11.5,-5 + 0.5*i))
+            self.dilate_obstacle(self.map_pose(11.5,-5 + 0.5*i))
         for i in range(25):
-            self.dilate_obstacle(n,self.map_pose(-1 + i*0.5,-5))
+            self.dilate_obstacle(self.map_pose(-1 + i*0.5,-5))
         for i in range(25):
-            self.dilate_obstacle(n,self.map_pose(-1 + i*0.5,5))
+            self.dilate_obstacle(self.map_pose(-1 + i*0.5,5))
     
     ############################################# TRAJECTORY PLANNING FUNCTIONS #############################################
     def reconstruct_path(self,camefrom, current):
@@ -142,20 +144,20 @@ class grid_motion_planning:
             total_path.append(current)
         return total_path
 
-    def find_safety(self,n):
-        self.update_dilated_map(n)
+    def find_safety(self):
+        self.update_dilated_map()
         #used when the drone enters an unknown area or a dilated obstacle
         #it provides the drone with a path to leave this situation
         queuek = []
         queuek.append(self.map_pose(self.pose_data.pose.position.x,self.pose_data.pose.position.y))
         while True:
             p = queuek.pop()
-            if self.map_data.data[p] == 0 and not self.obstacles.has_key(p) and not self.inflated_grid[p] == 100:
+            if self.map_data.data[p] == 0 and not self.inflated_grid[p] == 100:
                 return p
             for adj in self.adj_pose(p):
                 queuek.append(adj)
     
-    def checkpoint_selection(self,checkpoints, camefrom,n):
+    def checkpoint_selection(self,checkpoints, camefrom):
         #chooses the nearest checkpoint, based on the size of the trajectory leading to the point
         distances = {}
         path = {}
@@ -171,7 +173,7 @@ class grid_motion_planning:
             i = i + 1
         distances = sorted(distances.items(), key=lambda x:x[1], reverse=False)
         selected_point = path[distances[0][0]][0]
-        return self.A_star(selected_point,n)
+        return self.A_star(selected_point)
 
     def follow_trajectory(self,trajectory,initial_height):
         mav = MAV("1")
@@ -184,22 +186,22 @@ class grid_motion_planning:
                 """
                 if self.cartesian_pose(point)[0] - self.pose_data.pose.position.x < 0:
                     vel_x = self.cartesian_pose(point)[0] - self.pose_data.pose.position.x
-                    vel_x = speed_multiplier*vel_x
+                    vel_x = self.speed_multiplier*vel_x
                     if vel_x < -0.8: 
                         vel_x = -0.8
                 elif self.cartesian_pose(point)[0] - self.pose_data.pose.position.x > 0:
                     vel_x = self.cartesian_pose(point)[0] - self.pose_data.pose.position.x
-                    vel_x = speed_multiplier*vel_x
+                    vel_x = self.speed_multiplier*vel_x
                     if vel_x > 0.8:
                         vel_x = 0.8
                 if self.cartesian_pose(point)[1] - self.pose_data.pose.position.y < 0:
                     vel_y = self.cartesian_pose(point)[1] - self.pose_data.pose.position.y
-                    vel_y = speed_multiplier*vel_y
+                    vel_y = self.speed_multiplier*vel_y
                     if vel_y < -0.8:
                         vel_y = -0.8
                 elif self.cartesian_pose(point)[1] - self.pose_data.pose.position.y > 0:
                     vel_y = self.cartesian_pose(point)[1] - self.pose_data.pose.position.y
-                    vel_y = speed_multiplier*vel_y
+                    vel_y = self.speed_multiplier*vel_y
                     if vel_y > 0.8:
                         vel_y = 0.8
 
@@ -209,8 +211,8 @@ class grid_motion_planning:
                                     z_velocity=initial_height - mav.drone_pose.pose.position.z,
                                     yaw_rate=-self.pose_data.pose.orientation.z)
     ######### A* search #########
-    def A_star(self,goal,n):
-        self.update_dilated_map(n)
+    def A_star(self,goal):
+        self.update_dilated_map()
 
         t0 = time()
 
@@ -238,14 +240,14 @@ class grid_motion_planning:
             OPEN.remove(current)
 
             if current == goal:
-                return camefrom
+                return self.reconstruct_path(camefrom, goal)
 
             for sucessor in self.adj_pose(current):
                 if sucessor == goal:
                     camefrom[sucessor] = current
                     return self.reconstruct_path(camefrom, goal)
 
-                if self.map_data.data[sucessor] == -1 or self.obstacles.has_key(sucessor) or self.inflated_grid[sucessor] == 100:
+                if self.map_data.data[sucessor] == -1 or self.inflated_grid[sucessor] == 100:
                     continue
 
                 sucessor_current_cost = g[current] + self.map_data.info.resolution
@@ -272,10 +274,10 @@ class grid_motion_planning:
         return self.distance(node[0], node[1], goal[0], goal[1])
     
     ######### Wavefront Frontier Detection #########
-    def WFD(self,n):
+    def WFD(self):
         #WFD (Wavefront Frontier Detector) is a frontier-based exploration strategy
         #To understand the logic behind it visit: https://arxiv.org/pdf/1806.03581.pdf
-        self.update_dilated_map(n)
+        self.update_dilated_map()
         markers = {}
         camefrom = {}
 
@@ -288,7 +290,7 @@ class grid_motion_planning:
         initial = self.map_pose(self.pose_data.pose.position.x, self.pose_data.pose.position.y)
         if self.inflated_grid[initial] == 100:
             #prevents the drone from being stuck inside a dilated obstacle
-            initial = self.find_safety(n)
+            initial = self.find_safety()
 
         queuem.append(initial)
         markers[initial] = "Map-Open-List"
@@ -298,7 +300,7 @@ class grid_motion_planning:
             if markers.has_key(p):
                 if markers[p] == "Map-Close-List":
                     continue
-            if self.obstacles.has_key(p) or self.inflated_grid[p] == 100:
+            if self.inflated_grid[p] == 100:
                 continue
 
 
@@ -315,7 +317,7 @@ class grid_motion_planning:
                     if markers.has_key(q):
                         if markers[q] == "Map-Close-List" or markers[q] == "Frontier-Close-List":
                             continue
-                    if self.obstacles.has_key(q) or self.inflated_grid[q] == 100:
+                    if self.inflated_grid[q] == 100:
                         continue
 
                     if self.is_frontier(q):
@@ -337,7 +339,7 @@ class grid_motion_planning:
                     if markers.has_key(adj):
                         if markers[adj] == "Map-Open-List" or markers[adj] == "Map-Close-List":
                             continue
-                    if not self.obstacles.has_key(adj) and not self.inflated_grid[adj] == 100:
+                    if not self.inflated_grid[adj] == 100:
                         queuem.append(adj)
                         camefrom[adj] = p
                         markers[adj] = "Map-Open-List"
