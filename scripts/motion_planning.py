@@ -11,7 +11,7 @@ from time import time
 ######### PARAMETERS #########
 
 #speed multiplier
-speed_multiplier = 5
+speed_multiplier = 4
 #velocity mask
 MASK_VELOCITY = 0b0000011111000111 
 
@@ -31,7 +31,10 @@ class grid_motion_planning:
         #drone radius
         self.r = 0.4
         #safety parameter
-        self.safety = 0.8
+        self.safety = 1
+
+        rospy.wait_for_message("/map", OccupancyGrid)
+        self.n = int((self.r + self.safety)/self.map_data.info.resolution)
 
     def distance(self,x1,y1,x2,y2):
         #calculates the distance between two points, ignoring obstacles
@@ -101,14 +104,14 @@ class grid_motion_planning:
             adj.append(position - width -1)
         return adj
     
-    def update_dilated_map(self,n):
+    def update_dilated_map(self):
         self.inflated_grid = np.array(self.map_data.data)
         self.inflated_grid = np.reshape(self.inflated_grid, (self.map_data.info.width,self.map_data.info.width))
         self.inflated_grid = morphology.grey_dilation(self.inflated_grid, size=(n,n))
         self.inflated_grid = np.reshape(self.inflated_grid, (self.map_data.info.width*self.map_data.info.width))
         return self.inflated_grid
     
-    def dilate_obstacle(self,n, map_pose):
+    def dilate_obstacle(self, map_pose):
         #dilates the obstacle in "map_pose" in the "obstacles" dictionary
         pose = map_pose
         for i in range(n):
@@ -119,7 +122,7 @@ class grid_motion_planning:
                     self.obstacles[pose + line + column] = 1
         self.obstacles[pose] = 2
     
-    def manual_paint(self,n):
+    def manual_paint(self):
         #paints manually the countours of the mission, stops WFD from going through the whole map
         for i in range(20):
             self.dilate_obstacle(n,self.map_pose(-1,-5 + 0.5*i))
@@ -142,7 +145,7 @@ class grid_motion_planning:
             total_path.append(current)
         return total_path
 
-    def find_safety(self,n):
+    def find_safety(self):
         self.update_dilated_map(n)
         #used when the drone enters an unknown area or a dilated obstacle
         #it provides the drone with a path to leave this situation
@@ -155,7 +158,7 @@ class grid_motion_planning:
             for adj in self.adj_pose(p):
                 queuek.append(adj)
     
-    def checkpoint_selection(self,checkpoints, camefrom,n):
+    def checkpoint_selection(self,checkpoints, camefrom):
         #chooses the nearest checkpoint, based on the size of the trajectory leading to the point
         distances = {}
         path = {}
@@ -209,7 +212,7 @@ class grid_motion_planning:
                                     z_velocity=initial_height - mav.drone_pose.pose.position.z,
                                     yaw_rate=-self.pose_data.pose.orientation.z)
     ######### A* search #########
-    def A_star(self,goal,n):
+    def A_star(self,goal):
         self.update_dilated_map(n)
 
         t0 = time()
@@ -227,9 +230,9 @@ class grid_motion_planning:
 
         OPEN.append(start)
         while(len(OPEN) != 0):
-            t1 = time()
-            if (t1 - t0) > 1:
-                return 0
+            # t1 = time()
+            # if (t1 - t0) > 1:
+            #     return 0
 
             current = OPEN[0]
             for node in OPEN:
@@ -272,7 +275,7 @@ class grid_motion_planning:
         return self.distance(node[0], node[1], goal[0], goal[1])
     
     ######### Wavefront Frontier Detection #########
-    def WFD(self,n):
+    def WFD(self):
         #WFD (Wavefront Frontier Detector) is a frontier-based exploration strategy
         #To understand the logic behind it visit: https://arxiv.org/pdf/1806.03581.pdf
         self.update_dilated_map(n)
