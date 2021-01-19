@@ -36,12 +36,14 @@ def testRectangles():
     if cv2.waitKey(0) == 27:
         return
 
-def drawRectangles(rectangles, color=(0,0,255)):
+def drawRectangles(rectangles):
     global map
-    for rect in rectangles:
+    colors = ["#8DD3C7", "#FFFFB3", "#BEBADA", "#FB8072", "#80B1D3", "#FDB462", "#B3DE69", "#FCCDE5", "#D9D9D9", "#BC80BD", "#CCEBC5", "#FFED6F"]
+    for i in len(rectangles):
+        rect = rectangles[i]
         topright = (rect.right, rect.top)
         bottomleft = (rect.left, rect.bottom)
-        cv2.rectangle(map, topright, bottomleft, color, thickness=1)
+        cv2.rectangle(map, topright, bottomleft, colors[i], thickness=1)
 
 def calculate_sweep():
     sweep = []
