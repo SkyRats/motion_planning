@@ -87,9 +87,10 @@ class rectangle_sweep:
             sin_t = sin_t_start + int( np.floor(sin_t) )
             
             if horizontal:
-                trajectory.append( (t, sin_t) )
+
+                trajectory.append( self.to_unidimensional_map_pose(t, sin_t) )
             else:
-                trajectory.append( (sin_t, t) )
+                trajectory.append( self.to_unidimensional_map_pose(sin_t, t) )
             
             if t == t_goal:
                 break
@@ -172,7 +173,7 @@ class rectangle_sweep:
     def simplify_rectangles(self):
         new_rectangles = []
         simplified = []
-        while True::      
+        while True:
             for i in self._rectangles:
                 if i in simplified:
                     continue
@@ -242,6 +243,28 @@ class rectangle_sweep:
                 break
         
         self._rectangles = new_rectangles
+
+    def cut_grid(self, grid_2d):
+        left, right, bottom, top = self.calculate_grid_cutpoints()
+        return grid_2d[left:rigth, bottom:top]
+
+    def calculate_cutpoints_and_origin(self):
+        tr_map = grid_motion_planning.map_pose(
+            grid_motion_planning.rectangle_point4[0], 
+            grid_motion_planning.rectangle_point4[1])
+        bl_map = grid_motion_planning.map_pose(
+            grid_motion_planning.rectangle_point1[0],
+            grid_motion_planning.rectangle_point1[1])
+        cut_left = bl_map % grid_motion_planning.map_data.info.width
+        cut_right = tr_map % grid_motion_planning.map_data.info.width
+        cut_bottom = bl_map // grid_motion_planning.map_data.info.width
+        cut_top = tr_map // grid_motion_planning.map_data.info.width
+        self._origin = [cut_left, cut_top]
+        return cut_left, cut_right, cut_bottom, cut_top
+
+    def to_unidimensional_map_pose(x, y):
+        return grid_motion_planning.map_data.info.width*(self._origin[1]+y)
+                + (self._origin[0]+x)
 
     def close(self, x, y):
         return True if abs(x-y) < CLOSENESS_THRESH else False
