@@ -26,15 +26,16 @@ DEBUG = False
 Rectangle = namedtuple('Rectangle', 'right left top bottom')
 
 class rectangle_sweep:
-    def __init__(initial_mav_x, initial_mav_y, obstacles_2d)
-        self._map = obstacles_2d
-        self._initial_mav_x = initial_mav_x
-        self._initial_mav_y = initial_mav_y
+    def __init__(self, initial_mav_x, initial_mav_y, grid_2d):
+        self._origin = []
+        self._map = self.cut_grid(grid_2d)
+        self._initial_mav_x = initial_mav_x - self._origin[0]
+        self._initial_mav_y = initial_mav_y - self._origin[1]
         self._rectangles = []
 
     def calculate_sweep(self):
         sweep = []
-        rectangles = find_rectangles()
+        rectangles = self.find_rectangles()
 
         drone_x = self._initial_mav_x
         drone_y = self._initial_mav_y
@@ -44,7 +45,7 @@ class rectangle_sweep:
             print(len(rectangles))
 
             trajectory = []
-            rect = find_closest_rectangle(drone_x, drone_y, rectangles)
+            rect = self.find_closest_rectangle(drone_x, drone_y, rectangles)
             rectangles.remove(rect)
 
             w = rect.top - rect.bottom 
@@ -54,23 +55,23 @@ class rectangle_sweep:
 
             if abs(rect.right - rect.left) > abs(rect.top - rect.bottom):   # Rectangle is horizontal
                 start_y = (rect.top + rect.bottom)//2
-                start_x, goal_x, direction = calculate_start_goal_direction(drone_x, rect.right, rect.left)
+                start_x, goal_x, direction = self.calculate_start_goal_direction(drone_x, rect.right, rect.left)
 
                 A = (rect.top - rect.bottom)//2
                 A = A - SAFE_DISTANCE if A > SAFE_DISTANCE else A
-                trajectory = calculate_sine_trajectory(start_x, start_y, goal_x, A, direction, True)
+                trajectory = self.calculate_sine_trajectory(start_x, start_y, goal_x, A, direction, True)
 
             else: # Rectangle is vertical
                 start_x = (rect.right + rect.left)//2
-                start_y, goal_y, direction = calculate_start_goal_direction(drone_y, rect.top, rect.bottom)
+                start_y, goal_y, direction = self.calculate_start_goal_direction(drone_y, rect.top, rect.bottom)
 
                 A = (rect.right - rect.left)//2
                 A = A - SAFE_DISTANCE if A > SAFE_DISTANCE else A
-                trajectory = calculate_sine_trajectory(start_y, start_x, goal_y, A, direction, False)
+                trajectory = self.calculate_sine_trajectory(start_y, start_x, goal_y, A, direction, False)
             
             assert(len(trajectory) > 0), "Rectangle could not be swept"
             
-            goal = grid_motion_planning.map_pose(start_x, start_y)
+            goal = self.to_unidimensional_map_pose(start_x, start_y)
             sweep.append( grid_motion_planning.A_star(goal) )
             sweep.extend(trajectory)
 
@@ -109,7 +110,7 @@ class rectangle_sweep:
         closest_rectangle = None
         min_distance = 1000
         for rect in self._rectangles:
-            dr, dl, dt, db = calculate_rectangle_distances(x, y, rect)
+            dr, dl, dt, db = self.calculate_rectangle_distances(x, y, rect)
 
             rectangle_min_distance = min(dr, dl, dt, db)
             if rectangle_min_distance < min_distance:
@@ -165,8 +166,8 @@ class rectangle_sweep:
 
         print("# rectangles detected ", len(self._rectangles))
 
-        rectangles = simplify_rectangles()
-        rectangles = remove_intersection()
+        rectangles = self.simplify_rectangles()
+        rectangles = self.remove_intersection()
         print("# rectangles (final): ", len(self._rectangles))
 
     def simplify_rectangles(self):
@@ -181,14 +182,14 @@ class rectangle_sweep:
                     if j in simplified or i == j:
                         continue
                                 
-                    if close(i.right, j.right) and close(i.left, j.left): # Proximos em X
-                        if close(i.top, j.bottom) or close(i.bottom, j.top):
+                    if self.close(i.right, j.right) and self.close(i.left, j.left): # Proximos em X
+                        if self.close(i.top, j.bottom) or self.close(i.bottom, j.top):
                             new_rect = Rectangle( i.right, i.left, max(i.top, j.top), min(i.bottom, j.bottom) )
                             new_rectangles.append(new_rect)
                             simplified.append(i)
                             simplified.append(j)
-                    elif close(i.top, j.top) and close(i.bottom, j.bottom): # Proximos em Y
-                        if close(i.right, j.left) or close(i.left, j.right):
+                    elif self.close(i.top, j.top) and self.close(i.bottom, j.bottom): # Proximos em Y
+                        if self.close(i.right, j.left) or self.close(i.left, j.right):
                             new_rect = Rectangle( max(i.right, j.right), min(i.left, j.left), i.top, i.bottom )
                             new_rectangles.append(new_rect)
                             simplified.append(i)
@@ -215,7 +216,7 @@ class rectangle_sweep:
                     if j in removed_intersection or i == j:
                         continue
                     
-                    intersection = intersecting(i, j)
+                    intersection = self.intersecting(i, j)
                     
                     if intersection != None and intersection != "inside":
                         if intersection == "right":
