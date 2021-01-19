@@ -1,10 +1,9 @@
 import rospy
 import numpy as np
-from MAV import MAV
 from nav_msgs.msg import OccupancyGrid
 from geometry_msgs.msg import PoseStamped
 
-from motion_planning import grid_motion_planning
+from motion_planning.motion_planning import grid_motion_planning
 
 import cv2
 
