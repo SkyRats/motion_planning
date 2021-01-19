@@ -19,14 +19,17 @@ MASK_VELOCITY = 0b0000011111000111
 class grid_motion_planning:
 
     def __init__(self):
-        rospy.init_node("mapping")
         self.map_sub = rospy.Subscriber("/map", OccupancyGrid, self.map_callback, queue_size=1)
         self.pose_sub = rospy.Subscriber("/slam_out_pose", PoseStamped, self.pose_callback, queue_size=1)
-
         self.map_data = OccupancyGrid()
         self.pose_data = PoseStamped()
         self.inflated_grid = []
         self.grid_2d = []
+
+        self.rectangle_point1 = [5,-5.25]
+        self.rectangle_point2 = [17.5,-5.25]
+        self.rectangle_point3 = [5,5.25]
+        self.rectangle_point4 = [17.5,5.25]
 
         #drone radius
         self.r = 0.4
@@ -34,7 +37,6 @@ class grid_motion_planning:
         self.safety = 1
         #speed parameters
         self.speed_multiplier = 5
-
 
         rospy.wait_for_message("/map", OccupancyGrid)
         self.n = int((self.r + self.safety)/self.map_data.info.resolution)
@@ -108,8 +110,8 @@ class grid_motion_planning:
         self.manual_paint()
         
 
-        #plt.imshow(self.grid_2d, cmap='hot', interpolation='nearest')
-        #plt.show()
+        plt.imshow(self.grid_2d, cmap='hot', interpolation='nearest')
+        plt.show()
         return self.inflated_grid
     
     def dilate_obstacle(self, map_pose):
@@ -123,14 +125,14 @@ class grid_motion_planning:
     
     def manual_paint(self):
         #paints manually the countours of the mission, stops WFD from going through the whole map
-        for i in range(20):
-            self.dilate_obstacle(self.map_pose(-1,-5 + 0.5*i))
         for i in range(21):
-            self.dilate_obstacle(self.map_pose(11.5,-5 + 0.5*i))
+            self.dilate_obstacle(self.map_pose(self.rectangle_point1[0],self.rectangle_point1[1] + 0.5*i))
+        for i in range(21):
+            self.dilate_obstacle(self.map_pose(self.rectangle_point2[0],self.rectangle_point2[1] + 0.5*i))
         for i in range(25):
-            self.dilate_obstacle(self.map_pose(-1 + i*0.5,-5))
+            self.dilate_obstacle(self.map_pose(self.rectangle_point1[0] + i*0.5,self.rectangle_point1[1]))
         for i in range(25):
-            self.dilate_obstacle(self.map_pose(-1 + i*0.5,5))
+            self.dilate_obstacle(self.map_pose(self.rectangle_point1[0] + i*0.5,self.rectangle_point3[1]))
     
     ############################################# TRAJECTORY PLANNING FUNCTIONS #############################################
     def reconstruct_path(self,camefrom, current):
@@ -229,6 +231,7 @@ class grid_motion_planning:
 
         OPEN.append(start)
         while(len(OPEN) != 0):
+            print(OPEN)
             t1 = time()
             if (t1 - t0) > 1:
                 return 0
@@ -265,6 +268,7 @@ class grid_motion_planning:
                 g[sucessor] = sucessor_current_cost
                 camefrom[sucessor] = current
             CLOSE.append(current)
+        print("fudeu")
         return 0
     
     def H(self,node, goal):
