@@ -226,6 +226,9 @@ class grid_motion_planning:
 
         start = self.map_pose(self.pose_data.pose.position.x, self.pose_data.pose.position.y)
 
+        if self.inflated_grid[start] == 100:
+            #prevents the drone from being stuck inside a dilated obstacle
+            start = self.find_safety()
         g[start] = 0
         h[start] = self.H(start,goal)
 
