@@ -108,7 +108,7 @@ def detect_cylinders(laser_data):
     return objetos, obj_indices
 
 def object_is_a_circle(obj, obj_indices):
-    previous_cx = previous_cy = previous_r = 0
+    cx_average = cy_average = r_average = 0
 
     if len(obj) > 3:
         thetas = np.multiply(obj_indices, laser_data.angle_increment)
@@ -119,17 +119,18 @@ def object_is_a_circle(obj, obj_indices):
             x2, y2 = polar_to_cartesian(obj[i+1], thetas[i+1])
             x3, y3 = polar_to_cartesian(obj[i+2], thetas[i+2])
 
-            # From
-            # https://www.geeksforgeeks.org/equation-of-circle-when-three-points-on-the-circle-are-given/
             cx, cy, r = find_circle_xy_and_radius(x1, y1, x2, y2, x3, y3)
             if i == 0:
-                previous_cx = cx
-                previous_cy = cy
-                previous_r = r
+                cx_average = cx
+                cy_average = cy
+                r_average = r
                 continue
 
-            if (centres_are_close(cx, cy, previous_cx, previous_cy)
-                and radii_are_similar(r, previous_r)):
+            if (centres_are_close(cx, cy, cx_average, cy_average)
+                and radii_are_similar(r, r_average)):
+                cx_average = (cx_average*i + cx) / (i+1)
+                cy_average = (cy_average*i + cx) / (i+1)
+                r_average = (r_average*i + cx) / (i+1)
                 pass
             else:
                 return False
