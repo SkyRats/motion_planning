@@ -7,14 +7,15 @@ laser_data = LaserScan()
 
 CYLINDER_RADIUS = 0.25 #[m] - Raio dos cilindros (Especificado no edital)
 MINIMUM_DISTANCE = 0.15 #[m] - Distancia minima permitida pro Drone chegar perto de algo
-DISTANCE_THRESH = 0.001
-LENGTH_THRESH = 0.001
+DISTANCE_THRESH = 0.05
+LENGTH_THRESH = 0.05
 
 def laser_callback(data):
     global laser_data
     laser_data = data
     cylinders, indices = detect_cylinders(laser_data)
     print(len(cylinders))
+    print()
 
 def clear_cylinder(dist, index):
     temp = []
@@ -135,11 +136,14 @@ def object_is_a_circle(obj, obj_indices):
             else:
                 return False
 
+        print(cx_average, cy_average, r_average)
         return True
 
     return False
 
 def find_circle_xy_and_radius(x1, y1, x2, y2, x3, y3):
+    # From
+    # https://www.geeksforgeeks.org/equation-of-circle-when-three-points-on-the-circle-are-given/
     x12 = x1 - x2
     x13 = x1 - x3
 
