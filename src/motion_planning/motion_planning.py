@@ -216,8 +216,6 @@ class grid_motion_planning:
     def A_star(self,goal):
         self.update_dilated_map()
 
-        t0 = time()
-
         OPEN = []
         CLOSE = []
         h = {}
@@ -234,11 +232,6 @@ class grid_motion_planning:
 
         OPEN.append(start)
         while(len(OPEN) != 0):
-            print(OPEN)
-            t1 = time()
-            if (t1 - t0) > 1:
-                return 0
-
             current = OPEN[0]
             for node in OPEN:
                 if g[node] + h[node] <= g[current] + h[current]:
@@ -271,8 +264,7 @@ class grid_motion_planning:
                 g[sucessor] = sucessor_current_cost
                 camefrom[sucessor] = current
             CLOSE.append(current)
-        print("fudeu")
-        return 0
+        
     
     def H(self,node, goal):
         #heuristic function of the A* algorithm
