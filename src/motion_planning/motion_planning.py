@@ -18,7 +18,8 @@ MASK_VELOCITY = 0b0000011111000111
 
 class grid_motion_planning:
 
-    def __init__(self):
+    def __init__(self,mav):
+        self.mav = mav
         self.map_sub = rospy.Subscriber("/map", OccupancyGrid, self.map_callback, queue_size=1)
         self.pose_sub = rospy.Subscriber("/slam_out_pose", PoseStamped, self.pose_callback, queue_size=1)
         self.map_data = OccupancyGrid()
@@ -110,8 +111,8 @@ class grid_motion_planning:
         self.manual_paint()
         
 
-        plt.imshow(self.grid_2d, cmap='hot', interpolation='nearest')
-        plt.show()
+        #plt.imshow(self.grid_2d, cmap='hot', interpolation='nearest')
+        #plt.show()
         return self.inflated_grid
     
     def dilate_obstacle(self, map_pose):
@@ -178,7 +179,6 @@ class grid_motion_planning:
         return self.A_star(selected_point)
 
     def follow_trajectory(self,trajectory,initial_height):
-        mav = MAV("1")
         for point in trajectory:
             while self.distance(self.pose_data.pose.position.x, self.pose_data.pose.position.y, self.cartesian_pose(point)[0], self.cartesian_pose(point)[1]) > 0.2:
                 if rospy.is_shutdown():
@@ -207,10 +207,10 @@ class grid_motion_planning:
                     if vel_y > 0.8:
                         vel_y = 0.8
 
-                mav.set_position_target(type_mask=MASK_VELOCITY,
+                self.mav.set_position_target(type_mask=MASK_VELOCITY,
                                     x_velocity=vel_x,
                                     y_velocity=vel_y,
-                                    z_velocity=initial_height - mav.drone_pose.pose.position.z,
+                                    z_velocity=initial_height - self.mav.drone_pose.pose.position.z,
                                     yaw_rate=-self.pose_data.pose.orientation.z)
     ######### A* search #########
     def A_star(self,goal):
