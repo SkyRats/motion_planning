@@ -147,12 +147,14 @@ class grid_motion_planning:
             total_path.append(current)
         return total_path
 
-    def find_safety(self):
+    def find_safety(self, initial = None):
+        if initial == None:
+            initial = self.map_pose(self.pose_data.pose.position.x,self.pose_data.pose.position.y)
         self.update_dilated_map()
         #used when the drone enters an unknown area or a dilated obstacle
         #it provides the drone with a path to leave this situation
         queuek = []
-        queuek.append(self.map_pose(self.pose_data.pose.position.x,self.pose_data.pose.position.y))
+        queuek.append(initial)
         while True:
             p = queuek.pop()
             if self.map_data.data[p] == 0 and not self.inflated_grid[p] == 100:
@@ -239,6 +241,7 @@ class grid_motion_planning:
             OPEN.remove(current)
 
             if current == goal:
+            #if self.distance(self.cartesian_pose(current)[0], self.cartesian_pose(current)[1], self.cartesian_pose(goal)[0], self.cartesian_pose(goal)[1]) <= 0.1:
                 return self.reconstruct_path(camefrom, goal)
 
             for sucessor in self.adj_pose(current):
