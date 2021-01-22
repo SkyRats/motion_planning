@@ -166,8 +166,9 @@ class rectangle_sweep:
 
         print("# rectangles detected ", len(self._rectangles))
 
-        rectangles = self.simplify_rectangles()
-        rectangles = self.remove_intersection()
+        self.simplify_rectangles()
+        self.remove_intersection()
+        
         print("# rectangles (final): ", len(self._rectangles))
 
     def simplify_rectangles(self):
@@ -208,12 +209,12 @@ class rectangle_sweep:
         new_rectangles = []
         removed_intersection = []
         while True:
-            for i in self._rectangles:
-                if i in removed_intersection:
+            for j in self._rectangles:
+                if j in removed_intersection:
                     continue
 
-                for j in self._rectangles:
-                    if j in removed_intersection or i == j:
+                for i in self._rectangles:
+                    if i in removed_intersection or i == j:
                         continue
                     
                     intersection = self.intersecting(i, j)
