@@ -230,12 +230,12 @@ def remove_intersection(rectangles):
     new_rectangles = []
     removed_intersection = []
             
-    for i in rectangles:
-        if i in removed_intersection:
+    for j in rectangles:
+        if j in removed_intersection:
             continue
 
-        for j in rectangles:
-            if j in removed_intersection or i == j:
+        for i in rectangles:
+            if i in removed_intersection or i == j:
                 continue
             
             intersection = intersecting(i, j)
