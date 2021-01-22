@@ -3,7 +3,7 @@ import cv2
 
 from collections import namedtuple
     
-OBSTACLE_THRESH = 0.065
+OBSTACLE_THRESH = 0.08
 CLOSENESS_THRESH = 3
 MAP_COLOR = 255
 DRONE_RADIUS = 0.4
@@ -38,12 +38,16 @@ def testRectangles():
 
 def drawRectangles(rectangles):
     global map
-    colors = ["#8DD3C7", "#FFFFB3", "#BEBADA", "#FB8072", "#80B1D3", "#FDB462", "#B3DE69", "#FCCDE5", "#D9D9D9", "#BC80BD", "#CCEBC5", "#FFED6F"]
-    for i in len(rectangles):
+    colors = [  (199, 211, 141), (179, 255, 255), (218, 186, 190), 
+                (114, 128, 251), (211, 177, 128), (98, 180, 253), 
+                (105, 222, 179), (229, 205, 252), (217, 217, 217), 
+                (189, 128, 188), (197, 235, 204), (111, 237, 255)]
+    for i in range(len(rectangles)):
+        color_index = i % len(colors)
         rect = rectangles[i]
         topright = (rect.right, rect.top)
         bottomleft = (rect.left, rect.bottom)
-        cv2.rectangle(map, topright, bottomleft, colors[i], thickness=1)
+        cv2.rectangle(map, topright, bottomleft, colors[color_index])
 
 def calculate_sweep():
     sweep = []
@@ -182,7 +186,7 @@ def find_rectangles():
 
     print("# rectangles detected ", len(rectangles))
 
-    rectangles = simplify_rectangles(rectangles)
+    rectangles = merge_rectangles(rectangles)
     rectangles = remove_intersection(rectangles)
     print("# rectangles (final): ", len(rectangles))
 
@@ -191,7 +195,7 @@ def find_rectangles():
 
     return rectangles
 
-def simplify_rectangles(rectangles):
+def merge_rectangles(rectangles):
     new_rectangles = []
     simplified = []
             
@@ -224,7 +228,7 @@ def simplify_rectangles(rectangles):
         return new_rectangles
     else:
         print("# rectangles simplified", len(new_rectangles))
-        return simplify_rectangles(new_rectangles)
+        return merge_rectangles(new_rectangles)
 
 def remove_intersection(rectangles):
     new_rectangles = []
@@ -295,4 +299,4 @@ def intersecting(inner, outer):
     return output    
 
 if __name__ == "__main__":
-    testSweep()
+    testRectangles()
