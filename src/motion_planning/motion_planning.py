@@ -156,7 +156,7 @@ class grid_motion_planning:
         queuek = []
         queuek.append(initial)
         while True:
-            p = queuek.pop()
+            p = queuek.pop(0)
             if self.map_data.data[p] == 0 and not self.inflated_grid[p] == 100:
                 return p
             for adj in self.adj_pose(p):
