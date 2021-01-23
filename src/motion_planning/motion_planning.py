@@ -5,7 +5,7 @@ from nav_msgs.msg import OccupancyGrid
 from geometry_msgs.msg import PoseStamped
 from scipy.ndimage import morphology
 import math
-from random import randint
+import random
 from time import time
 
 import matplotlib.pyplot as plt
@@ -77,6 +77,24 @@ class grid_motion_planning:
         x = origin_x + (position%width)*res
         return x,y
     
+    def cut_grid_and_get_origin(self, grid_2d):
+        left, right, bottom, top = self.calculate_cutpoints_and_origin()
+        return grid_2d[left:right, bottom:top]
+
+    def calculate_cutpoints_and_origin(self):
+        tr_map = self.map_pose(
+            self.rectangle_point4[0], 
+            self.rectangle_point4[1])
+        bl_map = self.map_pose(
+            self.rectangle_point1[0],
+            self.rectangle_point1[1])
+        cut_left = bl_map // self.map_data.info.width
+        cut_right = tr_map // self.map_data.info.width
+        cut_bottom = bl_map % self.map_data.info.width
+        cut_top = tr_map % self.map_data.info.width
+        self._origin = (cut_left, cut_bottom)
+        return cut_left, cut_right, cut_bottom, cut_top
+    
     def is_frontier(self,position):
         #detects if the map point given is a frontier between the known and the unknown
         if self.map_data.data[position] != 0 or self.map_data.data[position] == self.map_pose(self.pose_data.pose.position.x,self.pose_data.pose.position.y):
@@ -145,6 +163,7 @@ class grid_motion_planning:
         while camefrom.has_key(current):
             current = camefrom[current]
             total_path.append(current)
+        total_path.reverse()
         return total_path
 
     def find_safety(self, initial = None):
@@ -275,7 +294,7 @@ class grid_motion_planning:
         goal = self.cartesian_pose(goal)
         return self.distance(node[0], node[1], goal[0], goal[1])
     
-    ######### Wavefront Frontier Detection #########
+    ######### Wavefront Frontier Detection (WFD) #########
     def WFD(self):
         #WFD (Wavefront Frontier Detector) is a frontier-based exploration strategy
         #To understand the logic behind it visit: https://arxiv.org/pdf/1806.03581.pdf
@@ -349,3 +368,86 @@ class grid_motion_planning:
 
         return Frontiers, camefrom
     
+    ######### rapidly exploring random tree Star (RRT*) #########
+    def rrt_init(self):
+        self.EPSILON = 10
+        self.rrt_near_radius = 30
+
+        self.nodes = []
+        self.parent = []
+        self.cost = []
+
+        self._map = self.cut_grid_and_get_origin(self.grid_2d)
+
+        #plt.imshow(self._map, cmap='hot', interpolation='nearest')
+        #plt.show()
+
+        np.shape(self._map)
+    
+    def step_from_to(self, p1, p2):
+        if self.distance(p1[0],p1[1],p2[0],p2[1]) < self.EPSILON:
+            return p2
+        else:
+            theta = math.atan2(p2[1] - p1[1], p2[0] - p1[0])
+            return int(p1[0] + self.EPSILON * math.cos(theta)), int(p1[1] + self.EPSILON * math.sin(theta))
+
+    def nearest(self,zrand):
+        znearest = self.nodes[0]
+        for p in self.nodes:
+            if self.distance(p[0],p[1],zrand[0],zrand[1]) < self.distance(znearest[0],znearest[1],zrand[0],zrand[1]):
+                znearest = p
+        return znearest
+    
+    def near(self,znew):
+        Znear = []
+        for node in self.nodes:
+            if self.distance(node[0],node[1],znew[0],znew[1]) < self.rrt_near_radius:
+                Znear.append(node)
+        return Znear
+    
+    def chooseparent(self,znearest,znew,Znear):
+        zmin = znearest
+        cmin = self.cost[znearest] + self.distance(znearest[0],znearest[1],znew[0],znew[1])
+        for znear in Znear:
+            c = self.cost[znear] + self.distance(znear[0],znear[1],znew[0],znew[1])
+            if c < cmin and rrt_class.screen.get_at((abs(int(znear[0]) - 1), abs(int(znear[1]) - 1))) != (240, 0, 0, 255) and rrt_class.screen.get_at((abs(int(znear[0]) - 1), abs(int(znear[1]) - 1))) != (0, 0, 240, 255) and rrt_class.screen.get_at((abs(int(znear[0]) - 1), abs(int(znear[1]) - 1))) != (240,240,240,255) and rrt_class.screen.get_at((abs(int(znew[0]) - 1), abs(int(znew[1]) - 1))) != (240, 0, 0, 255) and rrt_class.screen.get_at((abs(int(znew[0]) - 1), abs(int(znew[1]) - 1))) != (240,240,240,255): # check if obstacle free between znear and znew
+                c = cmin
+                zmin = znear
+        self.cost[znew] = cmin
+        self.parent[znew] = zmin
+    
+    def rewire(self,Znear,znew):
+        for znear in Znear:
+            if self.cost[znew] + self.distance(znew[0],znew[1],znear[0],znear[1]) < self.cost[znear] and rrt_class.screen.get_at((abs(int(znear[0]) - 1), abs(int(znear[1]) - 1))) != (240,0,0,255) and rrt_class.screen.get_at((abs(int(znear[0]) - 1), abs(int(znear[1]) - 1))) != (0,0,240,255) and rrt_class.screen.get_at((abs(int(znear[0]) - 1), abs(int(znear[1]) - 1))) != (240,240,240,255):
+                self.parent[znear] = znew
+                self.cost[znear] = self.cost[znew] + self.distance(znew[0],znew[1],znear[0],znear[1])
+        
+    def rrt_star(self,start,goal):
+        t0 = time.time()
+        t1 = t0
+        self.nodes = []
+        self.cost = {}
+        self.parent = {}
+
+        self.nodes.append(start)  # Start in the corner
+        self.cost[start] = 0
+
+        znew = (start)
+        while (self.distance(znew[0],znew[1], goal[0],goal[1]) > 15): #or (t1-t0) < 5:
+            t1 = time.time()
+            zrand = int(random.random() * 250.0), int(random.random() * 250.0)
+            znearest = self.nearest(zrand)
+            znew = self.step_from_to(znearest, zrand)
+            if znew in self.nodes:
+                continue
+            if rrt_class.screen.get_at((abs(int(znew[0]) - 1), abs(int(znew[1]) - 1))) != (240, 0, 0, 255) and rrt_class.screen.get_at((abs(int(znew[0]) - 1), abs(int(znew[1]) - 1))) != (0, 0, 240, 255) and rrt_class.screen.get_at((abs(int(znew[0]) - 1), abs(int(znew[1]) - 1))) != (240,240,240,255): #check if obstacle free
+                Znear = self.near(znew)
+                self.chooseparent(znearest,znew,Znear)
+                self.rewire(Znear,znew)
+                self.nodes.append(znew)
+        t1 = time.time()
+        self.parent[goal] = znew
+        print(t1-t0)
+        path = self.reconstruct_path(self.parent, goal)
+        path.reverse()
+        return path
