@@ -6,14 +6,14 @@ from collections import namedtuple
 OBSTACLE_THRESH = 0.08
 CLOSENESS_THRESH = 3
 MAP_COLOR = 255
-DRONE_RADIUS = 0.4
+DRONE_RADIUS = 4
 SAFE_DISTANCE = 3 # Se aplica aos dois lados
 PERIOD = 20
 NUMBER_OF_STEPS = 20 
 
 DEBUG = False
 
-map = cv2.imread("testes/map_v4.png")
+map = cv2.imread("test/grid_2.png")
 gray_map = cv2.cvtColor(map, cv2.COLOR_BGR2GRAY)
 cv2.threshold(gray_map, 100, 255, cv2.THRESH_TOZERO, dst=gray_map)
 
@@ -299,4 +299,4 @@ def intersecting(inner, outer):
     return output    
 
 if __name__ == "__main__":
-    testRectangles()
+    testSweep()
