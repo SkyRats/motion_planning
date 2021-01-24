@@ -196,7 +196,8 @@ if __name__ == '__main__':
     rate = rospy.Rate(20)
     while not rospy.is_shutdown():
         rospy.wait_for_message('/laser/scan', LaserScan)
-        cylinders = get_cylinders_xy_and_radius(laser_data)
+        objects, indices = get_cylinder_candidates(laser_data.ranges)
+        cylinders = get_cylinders_xy_and_radius(objects, indices)
         print(len(cylinders))
         for cylinder in cylinders:
             print("{0}\t{1}\t\t{2}".format(cylinder.cx, cylinder.cy, cylinder.r))
