@@ -7,6 +7,7 @@ from scipy.ndimage import morphology
 import math
 import random
 from time import time
+from simple_pid import PID
 
 import matplotlib.pyplot as plt
 
@@ -201,12 +202,27 @@ class grid_motion_planning:
 
     def follow_trajectory(self,trajectory,initial_height):
         for point in trajectory:
+            point_x, point_y = self.cartesian_pose(point)
             while self.distance(self.pose_data.pose.position.x, self.pose_data.pose.position.y, self.cartesian_pose(point)[0], self.cartesian_pose(point)[1]) > 0.2:
                 if rospy.is_shutdown():
                     break
-                """
-                paint_sweep(n)
-                """
+                
+                pid_x = PID(2,0.1,0.8)
+                pid_y = PID(2,0.1,0.8)
+                pid_z = PID(2,0.1,0.8)
+
+                pid_x.output_limits = pid_y.output_limits = pid_z.output_limits = (-0.8, 0.8)
+                
+                pid_x.setpoint = point_x
+                pid_y.setpoint = point_y
+                pid_z.setpoint = initial_height
+
+                vel_x = pid_x(self.pose_data.pose.position.x)
+                vel_y = pid_y(self.pose_data.pose.position.y)
+                vel_z = pid_z(self.mav.drone_pose.pose.position.z)
+                print(vel_x,vel_y,vel_z)
+                
+                """ PROPORTIONAl CONTROL
                 if self.cartesian_pose(point)[0] - self.pose_data.pose.position.x < 0:
                     vel_x = self.cartesian_pose(point)[0] - self.pose_data.pose.position.x
                     vel_x = self.speed_multiplier*vel_x
@@ -228,10 +244,13 @@ class grid_motion_planning:
                     if vel_y > 0.8:
                         vel_y = 0.8
 
+                vel_z = initial_height - self.mav.drone_pose.pose.position.z
+                """
+
                 self.mav.set_position_target(type_mask=MASK_VELOCITY,
                                     x_velocity=vel_x,
                                     y_velocity=vel_y,
-                                    z_velocity=initial_height - self.mav.drone_pose.pose.position.z,
+                                    z_velocity=vel_z,
                                     yaw_rate=-self.pose_data.pose.orientation.z)
     ######### A* search #########
     def A_star(self,goal):
