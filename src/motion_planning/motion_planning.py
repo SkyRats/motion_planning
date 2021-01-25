@@ -207,9 +207,9 @@ class grid_motion_planning:
                 if rospy.is_shutdown():
                     break
                 
-                pid_x = PID(2,0.1,0.8)
-                pid_y = PID(2,0.1,0.8)
-                pid_z = PID(2,0.1,0.8)
+                pid_x = PID(2,0,10000000) #10 , 1000000
+                pid_y = PID(2,0,10000000)
+                pid_z = PID(2,0,10000000)
 
                 pid_x.output_limits = pid_y.output_limits = pid_z.output_limits = (-0.8, 0.8)
                 
