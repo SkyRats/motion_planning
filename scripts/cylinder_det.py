@@ -176,8 +176,8 @@ def find_circle_xy_and_radius(x1, y1, x2, y2, x3, y3):
     return cx, cy, r
 
 def polar_to_cartesian(r, theta):
-    x = r*np.cos(theta)
-    y = r*np.sin(theta)
+    y = -r*np.cos(theta)
+    x = r*np.sin(theta)
     return x, y
 
 def indices_to_angles(obj_indices):
