@@ -220,7 +220,7 @@ class grid_motion_planning:
                 vel_x = pid_x(self.pose_data.pose.position.x)
                 vel_y = pid_y(self.pose_data.pose.position.y)
                 vel_z = pid_z(self.mav.drone_pose.pose.position.z)
-                print(vel_x,vel_y,vel_z)
+                
                 
                 """ PROPORTIONAl CONTROL
                 if self.cartesian_pose(point)[0] - self.pose_data.pose.position.x < 0:
@@ -253,7 +253,7 @@ class grid_motion_planning:
                                     z_velocity=vel_z,
                                     yaw_rate=-self.pose_data.pose.orientation.z)
     ######### A* search #########
-    def A_star(self,goal):
+    def A_star(self,goal, start = None):
         self.update_dilated_map()
 
         OPEN = []
@@ -261,12 +261,13 @@ class grid_motion_planning:
         h = {}
         g = {}
         camefrom = {}
-
-        start = self.map_pose(self.pose_data.pose.position.x, self.pose_data.pose.position.y)
-
+        if start == None:
+            start = self.map_pose(self.pose_data.pose.position.x, self.pose_data.pose.position.y)
+        
+        print(self.cartesian_pose(start))
         if self.inflated_grid[start] == 100:
             #prevents the drone from being stuck inside a dilated obstacle
-            start = self.find_safety()
+            start = self.find_safety(initial=start)
         g[start] = 0
         h[start] = self.H(start,goal)
 
