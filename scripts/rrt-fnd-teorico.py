@@ -6,9 +6,6 @@ from cylinder_det import cylinder_detector
 import rospy
 from sensor_msgs.msg import LaserScan
 from scipy.ndimage import morphology
-from simple_pid import PID
-
-MASK_VELOCITY = 0b0000011111000111 
 
 class node:
     def __init__(self,x,y):
@@ -19,7 +16,7 @@ class node:
         self.children = []
     
 class dinamic_obstacle_avoidance:
-    def __init__(self, goal_x, mav):
+    def __init__(self, goal_x):
         #PYGAME
         self.XDIM = 120
         self.YDIM = 180
@@ -34,7 +31,6 @@ class dinamic_obstacle_avoidance:
         #ROS
         self.laser_sub = rospy.Subscriber("/laser/scan", LaserScan, self.laser_callback, queue_size=1)
         rospy.wait_for_message('/laser/scan', LaserScan)
-        self.mav = mav
         
 
         #RRT PARAMS
@@ -43,7 +39,6 @@ class dinamic_obstacle_avoidance:
         self.rrt_near_radius = 15
         self.current_solution = []
         self.nodeList = []
-        self.old_path_nodes = []
 
         #Dinamic Map
         self.cyl = cylinder_detector()
@@ -131,7 +126,6 @@ class dinamic_obstacle_avoidance:
         t0 = time.time()
         found = False
         while i < 1500 or not found:
-
             rndPoint = [int(random.random() * 120.0), int(random.random() * 180.0)]
             
             nearestNode = self.nearest(rndPoint)
@@ -165,16 +159,16 @@ class dinamic_obstacle_avoidance:
     
     def update_map(self):
         self.DynamicMap = np.zeros((120,180))
-        dilate = 15
+        dilate = 5
         cylinders = self.cyl.get_cylinders_xy_and_radius(self.laser_data.ranges)
         for i in range(len(cylinders)):
-            x = int((cylinders[i].cx + self.mav.drone_pose.pose.position.x)/ 0.05)
-            y = int((cylinders[i].cy + 4.5 + self.mav.drone_pose.pose.position.y)/ 0.05) #Correct later
+            x = int(cylinders[i].cx/ 0.05)
+            y = int((cylinders[i].cy + 4.5)/ 0.05) #Correct later
             obstacle = node(x,y)
             for collied_node in self.near(obstacle,dilate):
                 if collied_node in self.nodeList:
                     self.DeleteBranch(collied_node)
-            if x > 120 or y > 180 or x < 0 or y < 0:
+            if x > 120 or y > 180:
                 continue
             self.DynamicMap[x-1][y-1] = 100
         self.DynamicMap = morphology.grey_dilation(self.DynamicMap, size=(dilate*2,dilate*2))
@@ -187,7 +181,7 @@ class dinamic_obstacle_avoidance:
         if safety > len(self.current_solution):
             safety = len(self.current_solution)
         for num in range(safety):
-            if self.current_solution[num] not in self.nodeList and self.collision(self.current_solution[num],self.DynamicMap):
+            if self.current_solution[num] not in self.nodeList:
                 return True
         return False
     
@@ -215,46 +209,25 @@ class dinamic_obstacle_avoidance:
         
     def nextNode(self):
         last_node = self.current_solution.pop(0)
-        self.old_path_nodes.append(last_node)
+        self.DeleteBranch(last_node, self.current_solution[0])
         self.start = self.current_solution[0]
         #drone goes to next node
-        print("going for next node")
-        x = self.current_solution[0].x * 0.05
-        y = self.current_solution[0].y *0.05 - 4.5
-        
-        while self.distance(self.mav.drone_pose.pose.position.x,self.mav.drone_pose.pose.position.y,x,y) > 0.2:
-            if rospy.is_shutdown():
-                    break
-                
-            pid_x = PID(3,0,10000000) #10 , 1000000
-            pid_y = PID(3,0,10000000) #10000000
-            pid_x.output_limits = pid_y.output_limits = (-0.8, 0.8)
-            
-            pid_x.setpoint = x
-            pid_y.setpoint = y
-            vel_x = pid_x(self.mav.drone_pose.pose.position.x)
-            vel_y = pid_y(self.mav.drone_pose.pose.position.y)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         
-            self.mav.set_position_target(type_mask=MASK_VELOCITY,
-                                x_velocity=vel_x,
-                                y_velocity=vel_y,
-                                z_velocity=1 - self.mav.drone_pose.pose.position.z,
-                                yaw_rate=0)
-    def stay_still(self):
-        self.mav.set_position_target(type_mask=0,
-                                x_velocity=0,
-                                y_velocity=0,
-                                z_velocity=0,
-                                yaw_rate=0)
-        
+        time.sleep(0.75)
+        print("forward")
+
+
     def dynamic_rrt(self):
         self.current_solution = self.rrt_star_fn(node(0,90))
         while self.current_solution[0].x < self.goal_x and not rospy.is_shutdown():
             pygame.display.update()
+            if self.collision(self.current_solution[0],self.DynamicMap):
+                print("collided")
+                return
+            print(len(self.current_solution))
+            print(self.current_solution[0].x,self.current_solution[0].y)
             self.update_map()
-            if self.CollisionInPath(3):
-                for nodes in self.old_path_nodes:
-                    if nodes in self.nodeList:
-                        self.DeleteBranch(nodes)
+            if self.CollisionInPath(60):
+                #StopMovement()
                 self.current_solution = self.rrt_star_fn(self.current_solution[0], 1500)
                 print("new path acquired")
                 continue
@@ -263,8 +236,5 @@ class dinamic_obstacle_avoidance:
 
 if __name__ == "__main__":
     rospy.init_node("dynamic_avoidance")
-    from mavbase.MAV import MAV
-    mav = MAV("1")
-    mav.takeoff(1)
-    doa = dinamic_obstacle_avoidance(110,mav)
+    doa = dinamic_obstacle_avoidance(110)
     doa.dynamic_rrt()
