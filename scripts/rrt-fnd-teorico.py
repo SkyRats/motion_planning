@@ -6,16 +6,18 @@ from cylinder_det import cylinder_detector
 import rospy
 from sensor_msgs.msg import LaserScan
 from scipy.ndimage import morphology
-
-class node:
-    def __init__(self,x,y):
-        self.x = x
-        self.y = y
-        self.cost = 0.0
-        self.parent = None
-        self.children = []
+from searchtrees.treap import Treap
     
 class dinamic_obstacle_avoidance:
+    
+    class node:
+        def __init__(self, x, y):
+            self.x = x
+            self.y = y
+            self.cost = 0.0
+            self.parent = None
+            self.children = []
+
     def __init__(self, goal_x):
         #PYGAME
         self.XDIM = 120
@@ -40,6 +42,8 @@ class dinamic_obstacle_avoidance:
         self.current_solution = []
         self.nodeList = []
 
+        self.treap_x = Treap()
+
         #Dinamic Map
         self.cyl = cylinder_detector()
         self.update_map()
@@ -50,9 +54,15 @@ class dinamic_obstacle_avoidance:
     def distance(self,x1,y1,x2,y2): #JA ESTA NO MOTION
         return math.sqrt((x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1))
 
-    def nearest(self,point): #REQUER OTIMIZACAO
-        nearestNode = self.start
-        for node in self.nodeList:
+    def nearest(self, point): #REQUER OTIMIZACAO
+        tmpNode = self.node(point[0], point[1])
+        nearList = self.near(tmpNode, self.rrt_near_radius)
+        if len(nearList) >= 1:
+            search_list = nearList
+        else:
+            search_list = self.nodeList
+        nearestNode = search_list[0]
+        for node in nearList:
             if self.distance(node.x,node.y,point[0],point[1]) < self.distance(nearestNode.x,nearestNode.y,point[0],point[1]):
                 nearestNode = node
         return nearestNode
@@ -69,12 +79,53 @@ class dinamic_obstacle_avoidance:
         else:
             return False
     
-    def near(self,newNode,near_radius):
+    def near(self, newNode, near_radius):
+        radius = near_radius
         nearList = []
-        for node in self.nodeList:
-            if self.distance(node.x,node.y,newNode.x,newNode.y) < near_radius:
-                nearList.append(node)
+
+        debug_counter = 0
+
+        while len(nearList) < 1:
+            debug_counter += 1
+            half_side = np.ceil(radius/np.sqrt(2))
+            greater_key = newNode.x + half_side
+            smaller_key = newNode.x - half_side
+
+            is_close = lambda node: self.distance(node.x, node.y, newNode.x, newNode.y) < radius
+            nearList = self.locate_close_nodes_between(self.treap_x.root, is_close, smaller_key, greater_key)
+
+            radius += near_radius
+
+        if debug_counter > 1:
+            print('Instances: {0}\tRadius: {1}\tList size: {2}'.format(debug_counter, radius, len(nearList)))
+
         return nearList
+
+    def locate_close_nodes_between(self, init_vert, is_close, smaller_key, greater_key):
+        selected_nodes = []
+        next_verts = []
+
+        if init_vert != None:
+            next_verts.append(init_vert)
+            while len(next_verts) > 0:
+                vert = next_verts.pop(0)
+                if vert.key > smaller_key and vert.left != None:
+                    next_verts.append(vert.left)
+                if vert.key < greater_key and vert.right != None:
+                    next_verts.append(vert.right)
+                if smaller_key <= vert.key <= greater_key:                        
+                    selected_nodes.extend(
+                        self.get_close_nodes_from_vert(vert, is_close)
+                    )
+
+        return selected_nodes
+
+    def get_close_nodes_from_vert(self, vert, is_close):
+        nodes = []
+        for node in vert.content:
+            if is_close(node):
+                nodes.append(node)
+        return nodes
     
     def chooseparent(self,newNode,nearList):
         nodeMin = nearList[0]
@@ -109,6 +160,7 @@ class dinamic_obstacle_avoidance:
         removed.parent.children.remove(removed)
         pygame.draw.line(self.screen, (20, 20, 40), (removed.x,removed.y),(removed.parent.x,removed.parent.y))
         self.nodeList.remove(removed)
+        self.treap_x.remove(removed, removed.x)
     
     def generate_solution(self,node_goal):
         solution = []
@@ -123,6 +175,7 @@ class dinamic_obstacle_avoidance:
     def rrt_star_fn(self, start, i=0):
         self.start = start
         self.nodeList.append(self.start)
+        self.treap_x.insert(self.start, self.start.x)
         t0 = time.time()
         found = False
         while i < 1500 or not found:
@@ -131,7 +184,7 @@ class dinamic_obstacle_avoidance:
             nearestNode = self.nearest(rndPoint)
 
             newNode = self.steer(nearestNode,rndPoint)
-            newNode = node(newNode[0],newNode[1])
+            newNode = self.node(newNode[0],newNode[1])
 
             if not self.collision(newNode, self.DynamicMap):
                 nearList = self.near(newNode, self.rrt_near_radius)
@@ -139,6 +192,7 @@ class dinamic_obstacle_avoidance:
                 self.chooseparent(newNode,nearList)
 
                 self.nodeList.append(newNode)
+                self.treap_x.insert(newNode, newNode.x)
                 
                 self.rewire(nearList,newNode)
 
@@ -164,7 +218,7 @@ class dinamic_obstacle_avoidance:
         for i in range(len(cylinders)):
             x = int(cylinders[i].cx/ 0.05)
             y = int((cylinders[i].cy + 4.5)/ 0.05) #Correct later
-            obstacle = node(x,y)
+            obstacle = self.node(x,y)
             for collied_node in self.near(obstacle,dilate):
                 if collied_node in self.nodeList:
                     self.DeleteBranch(collied_node)
@@ -201,6 +255,7 @@ class dinamic_obstacle_avoidance:
         for child in child_list:
             if child in done:
                 continue
+            self.treap_x.remove(child, child.x)
             self.nodeList.remove(child)
             if child.parent != None:
                 pygame.draw.line(self.screen, (20,20,40), (child.x,child.y), (child.parent.x,child.parent.y))
@@ -217,7 +272,7 @@ class dinamic_obstacle_avoidance:
 
 
     def dynamic_rrt(self):
-        self.current_solution = self.rrt_star_fn(node(0,90))
+        self.current_solution = self.rrt_star_fn(self.node(0,90))
         while self.current_solution[0].x < self.goal_x and not rospy.is_shutdown():
             pygame.display.update()
             if self.collision(self.current_solution[0],self.DynamicMap):
