@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 import sys, random, math, pygame, time
 from pygame.locals import *
 from math import sqrt, cos, sin, atan2

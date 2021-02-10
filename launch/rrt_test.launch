@@ -1,0 +1,4 @@
+<launch>
+    <rosparam command="load" file="$(find mavbase)/config/mavros_params.yaml"/>
+    <node pkg="motion_planning" name="dynamic_avoidance" type="rrt-fnd.py" output="screen"/>
+</launch>
