@@ -90,9 +90,12 @@ class cylinder_detector():
                 Assim, so precisamos conferir se o objeto e tao grande que ele nem foi detectado na primeira passagem
                 """
 
-                if len(obj_indices[0]) > 1 or obj_indices[0][0] < indices[current_i] < obj_indices[0][1]:
-                    del objetos[0]
-                    del obj_indices[0]
+                try:
+                    if obj_indices[0][0] < indices[current_i] < obj_indices[0][1]:
+                        del objetos[0]
+                        del obj_indices[0]
+                except IndexError:
+                    pass
 
             # Se chega so final da lista com um objeto valido armazenado, salva ele na lista
             elif res_min < len(temp) < prop_max*res:
