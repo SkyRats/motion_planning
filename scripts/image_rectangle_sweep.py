@@ -11,18 +11,24 @@ SAFE_DISTANCE = 3 # Se aplica aos dois lados
 PERIOD = 20
 NUMBER_OF_STEPS = 20 
 
-DEBUG = False
+RECTANGLE_DEBUG = False
+SWEEP_DEBUG = True
 
-map = cv2.imread("test/grid_2.png")
+map = cv2.imread("test/grid_1.png")
+colors = [  (199, 211, 141), (179, 255, 255), (218, 186, 190), 
+            (114, 128, 251), (211, 177, 128), (98, 180, 253), 
+            (105, 222, 179), (229, 205, 252), (217, 217, 217), 
+            (189, 128, 188), (197, 235, 204), (111, 237, 255)]
+
 gray_map = cv2.cvtColor(map, cv2.COLOR_BGR2GRAY)
 cv2.threshold(gray_map, 100, 255, cv2.THRESH_TOZERO, dst=gray_map)
+drawing_sweep = []
 
 Rectangle = namedtuple('Rectangle', 'right left top bottom')
 
 def testSweep():
     sweep = calculate_sweep()
-    for point in sweep:
-        cv2.circle(map, point, 1, (0,255,0))
+    drawTrajectory()
     cv2.imshow("map", map)
     cv2.imwrite("result.png", map)
     if cv2.waitKey(0) == 27:
@@ -38,10 +44,7 @@ def testRectangles():
 
 def drawRectangles(rectangles):
     global map
-    colors = [  (199, 211, 141), (179, 255, 255), (218, 186, 190), 
-                (114, 128, 251), (211, 177, 128), (98, 180, 253), 
-                (105, 222, 179), (229, 205, 252), (217, 217, 217), 
-                (189, 128, 188), (197, 235, 204), (111, 237, 255)]
+    global colors
     for i in range(len(rectangles)):
         color_index = i % len(colors)
         rect = rectangles[i]
@@ -49,13 +52,22 @@ def drawRectangles(rectangles):
         bottomleft = (rect.left, rect.bottom)
         cv2.rectangle(map, topright, bottomleft, colors[color_index])
 
+def drawTrajectory():
+    global map
+    global colors
+    global drawing_sweep
+    for i in range(len(drawing_sweep)):
+        color_index = i % len(colors)
+        for point in drawing_sweep[i]:
+            cv2.circle(map, point, 1, colors[color_index])
+
 def calculate_sweep():
     sweep = []
     rectangles = find_rectangles()
 
-    drone_x = 290
-    drone_y = 190
-    cv2.circle(map, (drone_x, drone_y), 1, (0,0,255), thickness=2)
+    drone_x = 140
+    drone_y = 130
+    cv2.circle(map, (drone_x, drone_y), 1, (255,255,255), thickness=2)
 
     while len(rectangles) != 0:
 
@@ -91,6 +103,11 @@ def calculate_sweep():
         sweep.append( (start_x, start_y) )
         sweep.extend(trajectory)
 
+        drawing_sweep.append(trajectory)
+
+        if SWEEP_DEBUG:
+            cv2.circle(map, (start_x, start_y), 1, (0,0,255), 2)
+            print("x: {0}\ty: {1}".format(drone_x, drone_y))
         drone_x = trajectory[-1][0]
         drone_y = trajectory[-1][1]
 
@@ -153,7 +170,7 @@ def find_rectangles():
         for point in approx.tolist():
             corners.append(point[0])
 
-            if DEBUG:
+            if RECTANGLE_DEBUG:
                 cv2.circle(map, tuple(point[0]), 1, (0,0,255), thickness=2)
 
     rectangles = []
@@ -184,13 +201,14 @@ def find_rectangles():
                 rect = Rectangle(right, left, top, bottom)
                 rectangles.append(rect)
 
-    print("# rectangles detected ", len(rectangles))
+    if RECTANGLE_DEBUG:
+        print("# rectangles detected ", len(rectangles))
 
     rectangles = merge_rectangles(rectangles)
     rectangles = remove_intersection(rectangles)
-    print("# rectangles (final): ", len(rectangles))
 
-    if DEBUG:
+    if RECTANGLE_DEBUG:
+        print("# rectangles (final): ", len(rectangles))
         drawRectangles(rectangles)
 
     return rectangles
@@ -227,7 +245,8 @@ def merge_rectangles(rectangles):
     if len(new_rectangles) == len(rectangles):
         return new_rectangles
     else:
-        print("# rectangles simplified", len(new_rectangles))
+        if RECTANGLE_DEBUG:
+            print("# rectangles simplified", len(new_rectangles))
         return merge_rectangles(new_rectangles)
 
 def remove_intersection(rectangles):
@@ -268,7 +287,8 @@ def remove_intersection(rectangles):
     if len(new_rectangles) == len(rectangles):
         return new_rectangles
     else:
-        print("# rectangles inter", len(new_rectangles))
+        if RECTANGLE_DEBUG:
+            print("# rectangles inter", len(new_rectangles))
         return remove_intersection(new_rectangles)
 
 def close(x, y):
