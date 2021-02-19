@@ -54,13 +54,15 @@ class rectangle_sweep:
         while len(self._rectangles) != 0:
             if self.is_rectangle_sweep_necessary(rectangle):
                 trajectory = []
-                rect = self.find_closest_rectangle(drone_x, drone_y)
+                rect, side = find_closest_rectangle_side(drone_x, drone_y)
+                is_horizontal = True
+                if side == "top" or side == "bottom":
+                    is_horizontal = False
                 self._rectangles.remove(rect)
 
                 start_x = start_y = 0
 
-                if abs(rect.right - rect.left) > abs(rect.top - rect.bottom):
-                    # Rectangle is horizontal
+                if is_horizontal:
                     start_y = (rect.top + rect.bottom)//2
                     start_x, goal_x, direction = self.calculate_start_goal_direction(
                         drone_x, rect.right, rect.left)
@@ -71,10 +73,9 @@ class rectangle_sweep:
 
                     A = A - SAFE_DISTANCE if A > SAFE_DISTANCE else A
                     trajectory = self.calculate_sine_trajectory(
-                        start_x, start_y, goal_x, A, direction, True)
+                        start_x, start_y, goal_x, A, direction, is_horizontal)
 
                 else: 
-                    # Rectangle is vertical
                     start_x = (rect.right + rect.left)//2
                     start_y, goal_y, direction = self.calculate_start_goal_direction(
                         drone_y, rect.top, rect.bottom)
@@ -85,7 +86,7 @@ class rectangle_sweep:
 
                     A = A - SAFE_DISTANCE if A > SAFE_DISTANCE else A
                     trajectory = self.calculate_sine_trajectory(
-                        start_y, start_x, goal_y, A, direction, False)
+                        start_y, start_x, goal_y, A, direction, is_horizontal)
 
                 assert(len(trajectory) > 0), "Rectangle could not be swept"
 
@@ -154,16 +155,33 @@ class rectangle_sweep:
         else: 
             return rect_greater, rect_smaller, -1
 
-    def find_closest_rectangle(self, x, y):
+    def find_closest_rectangle_side(self, x, y):
         closest_rectangle = None
+        side = ""
         min_distance = 1000
         for rect in self._rectangles:
-            dr, dl, dt, db = self.calculate_rectangle_distances(x, y, rect)
-            rectangle_min_distance = min(dr, dl, dt, db)
-            if rectangle_min_distance < min_distance:
-                min_distance = rectangle_min_distance
+            rect_min_distance, rect_side = self.calculate_min_distance_and_side(
+                x, y, rect)
+            if rect_min_distance < min_distance:
+                min_distance = rect_min_distance
+                side = rect_side
                 closest_rectangle = rect
-        return closest_rectangle
+
+        return closest_rectangle, side
+
+    def calculate_min_distance_and_side(self, x, y, rectangle):
+        dr, dl, dt, db = calculate_rectangle_distances(x, y, rectangle)
+        rectangle_min_distance = min(dr, dl, dt, db)
+        if rectangle_min_distance == dr:
+            side = "right"
+        elif rectangle_min_distance == dl:
+            side = "left"
+        elif rectangle_min_distance == dt:
+            side = "top"
+        else:
+            side = "bottom"
+
+        return rectangle_min_distance, side
 
     def calculate_rectangle_distances(self, x, y, rectangle):
         distance_right  = np.sqrt( (x - rectangle.right)**2 + (y - (rectangle.top + rectangle.bottom)/2)**2 )
