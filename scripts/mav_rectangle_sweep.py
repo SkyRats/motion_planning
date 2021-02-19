@@ -44,8 +44,7 @@ class rectangle_sweep:
         self.find_rectangles()
         astar_start = self.motion.map_pose(
             self.motion.pose_data.pose.position.x, 
-            self.motion.pose_data.pose.position.y
-        )
+            self.motion.pose_data.pose.position.y)
         
         self.dilate_path()
 
@@ -60,25 +59,33 @@ class rectangle_sweep:
 
                 start_x = start_y = 0
 
-                if abs(rect.right - rect.left) > abs(rect.top - rect.bottom):   # Rectangle is horizontal
+                if abs(rect.right - rect.left) > abs(rect.top - rect.bottom):
+                    # Rectangle is horizontal
                     start_y = (rect.top + rect.bottom)//2
-                    start_x, goal_x, direction = self.calculate_start_goal_direction(drone_x, rect.right, rect.left)
+                    start_x, goal_x, direction = self.calculate_start_goal_direction(
+                        drone_x, rect.right, rect.left)
                     A = (rect.top - rect.bottom)//2
-                    if A < drone_radius_in_pixels or abs(start_x - goal_x) < 2*drone_radius_in_pixels:
+                    if (A < drone_radius_in_pixels 
+                        or abs(start_x - goal_x) < 2*drone_radius_in_pixels):
                         continue
 
                     A = A - SAFE_DISTANCE if A > SAFE_DISTANCE else A
-                    trajectory = self.calculate_sine_trajectory(start_x, start_y, goal_x, A, direction, True)
+                    trajectory = self.calculate_sine_trajectory(
+                        start_x, start_y, goal_x, A, direction, True)
 
-                else: # Rectangle is vertical
+                else: 
+                    # Rectangle is vertical
                     start_x = (rect.right + rect.left)//2
-                    start_y, goal_y, direction = self.calculate_start_goal_direction(drone_y, rect.top, rect.bottom)
+                    start_y, goal_y, direction = self.calculate_start_goal_direction(
+                        drone_y, rect.top, rect.bottom)
                     A = (rect.right - rect.left)//2
-                    if A < drone_radius_in_pixels or abs(start_y - goal_y) < 2*drone_radius_in_pixels:
+                    if (A < drone_radius_in_pixels 
+                        or abs(start_y - goal_y) < 2*drone_radius_in_pixels):
                         continue
 
                     A = A - SAFE_DISTANCE if A > SAFE_DISTANCE else A
-                    trajectory = self.calculate_sine_trajectory(start_y, start_x, goal_y, A, direction, False)
+                    trajectory = self.calculate_sine_trajectory(
+                        start_y, start_x, goal_y, A, direction, False)
 
                 assert(len(trajectory) > 0), "Rectangle could not be swept"
 
@@ -129,9 +136,9 @@ class rectangle_sweep:
             sin_t = sin_t_start + int( np.floor(sin_t) )
             
             if horizontal:
-                trajectory.append( self.to_unidimensional_map_pose(t, sin_t) )
+                trajectory.append( self.bidimensional_to_unidimensional(t, sin_t) )
             else:
-                trajectory.append( self.to_unidimensional_map_pose(sin_t, t) )
+                trajectory.append( self.bidimensional_to_unidimensional(sin_t, t) )
             
             if t == t_goal:
                 break
@@ -141,9 +148,9 @@ class rectangle_sweep:
                 t += direction * PERIOD//NUMBER_OF_STEPS
         return trajectory
 
-    def calculate_start_goal_direction(self, drone, rect_greater, rect_smaller):
-        if abs(drone - rect_greater) > abs(drone - rect_smaller): 
-            return rect_smaller, rect_greater, 1
+    def calculate_start_goal_direction(self, drone, rect_bigger, rect_smaller):
+        if abs(drone - rect_bigger) > abs(drone - rect_smaller): 
+            return rect_smaller, rect_bigger, 1
         else: 
             return rect_greater, rect_smaller, -1
 
@@ -330,7 +337,8 @@ class rectangle_sweep:
     def intersecting(self, inner, outer):
         counter = 0
         output = None
-        if  outer.bottom - CLOSENESS_THRESH < inner.top < outer.top + CLOSENESS_THRESH and outer.bottom - CLOSENESS_THRESH < inner.bottom < outer.top + CLOSENESS_THRESH:
+        if  (outer.bottom - CLOSENESS_THRESH < inner.top < outer.top + CLOSENESS_THRESH 
+            and outer.bottom - CLOSENESS_THRESH < inner.bottom < outer.top + CLOSENESS_THRESH):
             counter += 2
             
             if inner.left < outer.right and inner.right > outer.right: 
@@ -338,7 +346,8 @@ class rectangle_sweep:
             elif inner.left < outer.left and inner.right > outer.left:
                 output = "left"
             
-        if outer.left - CLOSENESS_THRESH < inner.right < outer.right + CLOSENESS_THRESH and outer.left - CLOSENESS_THRESH < inner.left < outer.right + CLOSENESS_THRESH:
+        if (outer.left - CLOSENESS_THRESH < inner.right < outer.right + CLOSENESS_THRESH 
+            and outer.left - CLOSENESS_THRESH < inner.left < outer.right + CLOSENESS_THRESH):
             counter += 2
             
             if inner.bottom < outer.bottom and inner.top > outer.bottom:
