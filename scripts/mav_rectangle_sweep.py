@@ -1,16 +1,19 @@
-import rospy
 import numpy as np
 import cv2
 from nav_msgs.msg import OccupancyGrid
 from geometry_msgs.msg import PoseStamped
 
+import rospy
+from nav_msgs.msg import Path
+
 from collections import namedtuple
 
 MASK_VELOCITY = 0b0000011111000111
+
 OBSTACLE_THRESH = 0.06
 CLOSENESS_THRESH = 3
+SWEEP_THRESH = 0.85
 MAP_COLOR = 255 
-MAP_CELL_SIDE_IN_METRES = 1
 SAFE_DISTANCE = 1 # Applies to both sides
 PERIOD = 20
 NUMBER_OF_STEPS = 20 
@@ -24,77 +27,99 @@ class rectangle_sweep:
         self._origin = []
         self.motion = motion
         self.mav = mav
-        self._map = self.cut_grid_and_get_origin(motion.grid_2d)
+        self._map = self.cut_grid_and_get_origin(self.motion.grid_2d)
+        self._map_res = self.motion.map_data.info.resolution
         self._initial_mav_x = initial_mav_x - self._origin[0]
         self._initial_mav_y = initial_mav_y - self._origin[1]
         self._rectangles = []
 
+        self.THERMAL_CAMERA_RADIUS_IN_PIXELS = 10 / self._map_res
+        
+        rospy.Subscriber('/trajectory', Path, self.trajectory_cb)
+        rospy.wait_for_message('/trajectory', Path)
+
     def calculate_sweep(self):
-        drone_radius_in_pixels = self.motion.r // MAP_CELL_SIDE_IN_METRES
+        drone_radius_in_pixels = self.motion.r // self._map_res
         sweep = []
         self.find_rectangles()
-        first = True
-        start = self.motion.map_pose(self.motion.pose_data.pose.position.x, self.motion.pose_data.pose.position.y)
+        astar_start = self.motion.map_pose(
+            self.motion.pose_data.pose.position.x, 
+            self.motion.pose_data.pose.position.y
+        )
+        
+        self.dilate_path()
 
         drone_x = self._initial_mav_x
         drone_y = self._initial_mav_y
 
         while len(self._rectangles) != 0:
-            if not first:
-                start = trajectory[-1]
-            first = False
-            trajectory = []
-            rect = self.find_closest_rectangle(drone_x, drone_y)
-            self._rectangles.remove(rect)
+            if self.is_rectangle_sweep_necessary(rectangle):
+                trajectory = []
+                rect = self.find_closest_rectangle(drone_x, drone_y)
+                self._rectangles.remove(rect)
 
-            start_x = start_y = 0
+                start_x = start_y = 0
 
-            if abs(rect.right - rect.left) > abs(rect.top - rect.bottom):   # Rectangle is horizontal
-                start_y = (rect.top + rect.bottom)//2
-                start_x, goal_x, direction = self.calculate_start_goal_direction(drone_x, rect.right, rect.left)
-                A = (rect.top - rect.bottom)//2
-                if A < drone_radius_in_pixels or abs(start_x - goal_x) < 2*drone_radius_in_pixels:
-                    continue
+                if abs(rect.right - rect.left) > abs(rect.top - rect.bottom):   # Rectangle is horizontal
+                    start_y = (rect.top + rect.bottom)//2
+                    start_x, goal_x, direction = self.calculate_start_goal_direction(drone_x, rect.right, rect.left)
+                    A = (rect.top - rect.bottom)//2
+                    if A < drone_radius_in_pixels or abs(start_x - goal_x) < 2*drone_radius_in_pixels:
+                        continue
 
-                A = A - SAFE_DISTANCE if A > SAFE_DISTANCE else A
-                trajectory = self.calculate_sine_trajectory(start_x, start_y, goal_x, A, direction, True)
+                    A = A - SAFE_DISTANCE if A > SAFE_DISTANCE else A
+                    trajectory = self.calculate_sine_trajectory(start_x, start_y, goal_x, A, direction, True)
 
-            else: # Rectangle is vertical
-                start_x = (rect.right + rect.left)//2
-                start_y, goal_y, direction = self.calculate_start_goal_direction(drone_y, rect.top, rect.bottom)
-                A = (rect.right - rect.left)//2
-                if A < drone_radius_in_pixels or abs(start_y - goal_y) < 2*drone_radius_in_pixels:
-                    continue
+                else: # Rectangle is vertical
+                    start_x = (rect.right + rect.left)//2
+                    start_y, goal_y, direction = self.calculate_start_goal_direction(drone_y, rect.top, rect.bottom)
+                    A = (rect.right - rect.left)//2
+                    if A < drone_radius_in_pixels or abs(start_y - goal_y) < 2*drone_radius_in_pixels:
+                        continue
 
-                A = A - SAFE_DISTANCE if A > SAFE_DISTANCE else A
-                trajectory = self.calculate_sine_trajectory(start_y, start_x, goal_y, A, direction, False)
+                    A = A - SAFE_DISTANCE if A > SAFE_DISTANCE else A
+                    trajectory = self.calculate_sine_trajectory(start_y, start_x, goal_y, A, direction, False)
 
-            assert(len(trajectory) > 0), "Rectangle could not be swept"
+                assert(len(trajectory) > 0), "Rectangle could not be swept"
 
-            goal = self.to_unidimensional_map_pose(start_x, start_y)
-            if self.motion.inflated_grid[goal] == 100:
-                goal = self.motion.find_safety(initial = goal)
-            path = self.motion.A_star(goal,start = start)
+                goal = self.bidimensional_to_unidimensional(start_x, start_y)
+                if self.motion.inflated_grid[goal] == 100:
+                    goal = self.motion.find_safety(initial = goal)
+                path = self.motion.A_star(goal, start = astar_start)
 
-            sweep.extend(path)
-            for point in path:
-                print(self.motion.cartesian_pose(point))
-            sweep.extend(trajectory)
+                sweep.extend(path)
+                for point in path:
+                    print(self.motion.cartesian_pose(point))
+                sweep.extend(trajectory)
 
-            drone_x = trajectory[-1] // self.motion.map_data.info.width
-            drone_y = trajectory[-1] %  self.motion.map_data.info.width
-            
-            # Prevents drone from exiting OFFBOARD flight mode
-            # while trjaectory is computed
-            height = 1
-            self.mav.set_position_target(
-                type_mask=MASK_VELOCITY,
-                x_velocity=0,
-                y_velocity=0,
-                z_velocity=height - self.mav.drone_pose.pose.position.z,
-                yaw_rate=-self.motion.pose_data.pose.orientation.z)
+                astar_start = trajectory[-1]
+                drone_x = trajectory[-1] // self.motion.map_data.info.width
+                drone_y = trajectory[-1] %  self.motion.map_data.info.width
+                
+                # Prevents drone from exiting OFFBOARD flight mode
+                # while trjaectory is computed
+                height = 1
+                self.mav.set_position_target(
+                    type_mask=MASK_VELOCITY,
+                    x_velocity=0,
+                    y_velocity=0,
+                    z_velocity=height - self.mav.drone_pose.pose.position.z,
+                    yaw_rate=-self.motion.pose_data.pose.orientation.z)
 
         return sweep
+    
+    def is_rectangle_sweep_necessary(rectangle):
+        left = rectangle.left
+        right = rectangle.right
+        top = rectangle.top
+        bottom = rectangle.bottom
+
+        value = np.sum( self._map[left:right, bottom:top] )
+        area = (top - bottom) * (right - left)
+        if value < MAP_COLOR * SWEEP_THRESH * area:
+            return True
+        else:
+            return False
 
     def calculate_sine_trajectory(self, t_start, sin_t_start, t_goal, amplitude, direction, horizontal):
         trajectory = []
@@ -256,6 +281,18 @@ class rectangle_sweep:
         else:
             self.remove_intersection(new_rectangles)
         
+    def dilate_path():
+        for pose in self._trajectory:
+            position_x = pose.pose.position.x
+            position_y = pose.pose.position.y
+            x, y = self.meters_to_bidimensional(position_x, position_y)
+            self.dilate_around(x, y, self.THERMAL_CAMERA_RADIUS_IN_PIXELS)
+
+    def dilate_around(x, y, radius):
+        for i in range(x-radius, x+radius):
+            for j in range(y-radius, y+radius):
+                self._map[i][j] = MAP_COLOR
+
     def cut_grid_and_get_origin(self, grid_2d):
         left, right, bottom, top = self.calculate_cutpoints_and_origin()
         return grid_2d[left:right, bottom:top]
@@ -274,9 +311,18 @@ class rectangle_sweep:
         self._origin = (cut_left, cut_bottom)
         return cut_left, cut_right, cut_bottom, cut_top
 
-    def to_unidimensional_map_pose(self, x, y):
+    def unidimensional_to_bidimensional(self, uni):
+        x = uni // self.motion.map_data.info.width
+        y = uni % self.motion.map_data.info.width
+        return x, y
+
+    def bidimensional_to_unidimensional(self, x, y):
         return ( self.motion.map_data.info.width*(self._origin[0]+x)
                 + (self._origin[1]+y) )
+
+    def meters_to_bidimensional(self, x, y):
+        uni = self.motion.map_pose(x, y)
+        return self.unidimensional_to_bidimensional(uni)
 
     def close(self, x, y):
         return True if abs(x-y) < CLOSENESS_THRESH else False
@@ -304,3 +350,6 @@ class rectangle_sweep:
             output = "inside"
 
         return output    
+
+    def trajectory_cb(data):
+        self._trajectory = data.poses
