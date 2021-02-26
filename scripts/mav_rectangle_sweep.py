@@ -19,7 +19,7 @@ SAFE_DISTANCE = 1 # Applies to both sides
 PERIOD = 20
 NUMBER_OF_STEPS = 20 
 
-THERMAL_CAMERA_RADIUS_IN_CENTIMETERS = 10
+THERMAL_CAMERA_RADIUS_IN_METERS = 0.1
 
 DEBUG = False
 
@@ -36,7 +36,7 @@ class rectangle_sweep:
         self._initial_mav_y = initial_mav_y - self._origin[1]
         self._rectangles = []
 
-        self.THERMAL_CAMERA_RADIUS_IN_PIXELS = THERMAL_CAMERA_RADIUS_IN_CENTIMETERS / self._map_res
+        self.THERMAL_CAMERA_RADIUS_IN_PIXELS = int(THERMAL_CAMERA_RADIUS_IN_METERS / self._map_res)
         
         rospy.Subscriber('/trajectory', Path, self.trajectory_cb)
         rospy.wait_for_message('/trajectory', Path)
@@ -55,13 +55,13 @@ class rectangle_sweep:
         drone_y = self._initial_mav_y
 
         while len(self._rectangles) != 0:
-            if self.is_rectangle_sweep_necessary(rectangle):
+            rect, side = self.find_closest_rectangle_side(drone_x, drone_y)
+            self._rectangles.remove(rect)
+            if self.is_rectangle_sweep_necessary(rect):
                 trajectory = []
-                rect, side = find_closest_rectangle_side(drone_x, drone_y)
                 is_horizontal = True
                 if side == "top" or side == "bottom":
                     is_horizontal = False
-                self._rectangles.remove(rect)
 
                 start_x = start_y = 0
 
@@ -119,7 +119,7 @@ class rectangle_sweep:
 
         return sweep
     
-    def is_rectangle_sweep_necessary(rectangle):
+    def is_rectangle_sweep_necessary(self, rectangle):
         left = rectangle.left
         right = rectangle.right
         top = rectangle.top
@@ -156,7 +156,7 @@ class rectangle_sweep:
         if abs(drone - rect_bigger) > abs(drone - rect_smaller): 
             return rect_smaller, rect_bigger, 1
         else: 
-            return rect_greater, rect_smaller, -1
+            return rect_bigger, rect_smaller, -1
 
     def find_closest_rectangle_side(self, x, y):
         closest_rectangle = None
@@ -173,7 +173,7 @@ class rectangle_sweep:
         return closest_rectangle, side
 
     def calculate_min_distance_and_side(self, x, y, rectangle):
-        dr, dl, dt, db = calculate_rectangle_distances(x, y, rectangle)
+        dr, dl, dt, db = self.calculate_rectangle_distances(x, y, rectangle)
         rectangle_min_distance = min(dr, dl, dt, db)
         if rectangle_min_distance == dr:
             side = "right"
@@ -309,14 +309,15 @@ class rectangle_sweep:
         else:
             self.remove_intersection(new_rectangles)
         
-    def dilate_path():
+    def dilate_path(self):
         for pose in self._trajectory:
             position_x = pose.pose.position.x
             position_y = pose.pose.position.y
             x, y = self.meters_to_bidimensional(position_x, position_y)
             self.dilate_around(x, y, self.THERMAL_CAMERA_RADIUS_IN_PIXELS, 127)
 
-    def dilate_around(x, y, radius, color=MAP_COLOR):
+    def dilate_around(self, x, y, radius, color=MAP_COLOR):
+        print(radius)
         for i in range(x-radius, x+radius):
             for j in range(y-radius, y+radius):
                 self._map[i][j] = color
@@ -341,7 +342,9 @@ class rectangle_sweep:
 
     def unidimensional_to_bidimensional(self, uni):
         x = uni // self.motion.map_data.info.width
+        x -= self._origin[0]
         y = uni % self.motion.map_data.info.width
+        y -= self._origin[1]
         return x, y
 
     def bidimensional_to_unidimensional(self, x, y):
@@ -381,5 +384,5 @@ class rectangle_sweep:
 
         return output    
 
-    def trajectory_cb(data):
+    def trajectory_cb(self, data):
         self._trajectory = data.poses
