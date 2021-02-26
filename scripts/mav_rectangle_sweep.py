@@ -14,9 +14,12 @@ OBSTACLE_THRESH = 0.06
 CLOSENESS_THRESH = 3
 SWEEP_THRESH = 0.85
 MAP_COLOR = 255 
+
 SAFE_DISTANCE = 1 # Applies to both sides
 PERIOD = 20
 NUMBER_OF_STEPS = 20 
+
+THERMAL_CAMERA_RADIUS_IN_CENTIMETERS = 10
 
 DEBUG = False
 
@@ -33,7 +36,7 @@ class rectangle_sweep:
         self._initial_mav_y = initial_mav_y - self._origin[1]
         self._rectangles = []
 
-        self.THERMAL_CAMERA_RADIUS_IN_PIXELS = 10 / self._map_res
+        self.THERMAL_CAMERA_RADIUS_IN_PIXELS = THERMAL_CAMERA_RADIUS_IN_CENTIMETERS / self._map_res
         
         rospy.Subscriber('/trajectory', Path, self.trajectory_cb)
         rospy.wait_for_message('/trajectory', Path)
@@ -311,12 +314,12 @@ class rectangle_sweep:
             position_x = pose.pose.position.x
             position_y = pose.pose.position.y
             x, y = self.meters_to_bidimensional(position_x, position_y)
-            self.dilate_around(x, y, self.THERMAL_CAMERA_RADIUS_IN_PIXELS)
+            self.dilate_around(x, y, self.THERMAL_CAMERA_RADIUS_IN_PIXELS, 127)
 
-    def dilate_around(x, y, radius):
+    def dilate_around(x, y, radius, color=MAP_COLOR):
         for i in range(x-radius, x+radius):
             for j in range(y-radius, y+radius):
-                self._map[i][j] = MAP_COLOR
+                self._map[i][j] = color
 
     def cut_grid_and_get_origin(self, grid_2d):
         left, right, bottom, top = self.calculate_cutpoints_and_origin()
