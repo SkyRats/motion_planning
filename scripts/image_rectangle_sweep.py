@@ -11,14 +11,25 @@ SAFE_DISTANCE = 3 # Se aplica aos dois lados
 PERIOD = 20
 NUMBER_OF_STEPS = 20 
 
-RECTANGLE_DEBUG = False
-SWEEP_DEBUG = True
+RECTANGLE_DEBUG = True
+SWEEP_DEBUG = False
 
-map = cv2.imread("test/grid_1.png")
-colors = [  (199, 211, 141), (179, 255, 255), (218, 186, 190), 
-            (114, 128, 251), (211, 177, 128), (98, 180, 253), 
-            (105, 222, 179), (229, 205, 252), (217, 217, 217), 
-            (189, 128, 188), (197, 235, 204), (111, 237, 255)]
+map = cv2.imread("test/trajectory_1.png")
+# colors = [  (199, 211, 141),
+#             (179, 255, 255),
+#             (218, 186, 190),
+#             (114, 128, 251),
+#             (211, 177, 128),
+#             (98, 180, 253),
+#             (105, 222, 179),
+#             (229, 205, 252),
+#             (217, 217, 217),
+#             (189, 128, 188),
+#             (197, 235, 204),
+#             (111, 237, 255) ]
+
+colors = [  (0, 0, 255), (0, 255, 0), (255, 0, 0),
+            (0, 255, 255), (255, 0, 255), (255, 255, 0)]
 
 gray_map = cv2.cvtColor(map, cv2.COLOR_BGR2GRAY)
 cv2.threshold(gray_map, 100, 255, cv2.THRESH_TOZERO, dst=gray_map)
@@ -335,4 +346,7 @@ def intersecting(inner, outer):
     return output    
 
 if __name__ == "__main__":
-    testSweep()
+    if RECTANGLE_DEBUG:
+        testRectangles()
+    elif SWEEP_DEBUG:
+        testSweep()
