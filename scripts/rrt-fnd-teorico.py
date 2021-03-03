@@ -45,7 +45,6 @@ class dinamic_obstacle_avoidance:
         self.current_solution = []
         self.nodeList = []
         self.old_path_nodes = []
-
         #Dinamic Map
         self.cyl = cylinder_detector()
         self.old_obstacles = []
@@ -128,7 +127,9 @@ class dinamic_obstacle_avoidance:
         solution.reverse()
         return solution
 
-    def rrt_star_fn(self, start, i=0):
+    def rrt_star_fn(self, start, goal, i=0, regrow = False):
+        if regrow:
+            self.nodeList = []
         self.start = start
         self.nodeList.append(self.start)
         t0 = time.time()
@@ -158,7 +159,7 @@ class dinamic_obstacle_avoidance:
                 if len(self.nodeList) > 2000:
                     self.forceRemoval()
             ####################################################
-                found = self.distance(newNode.x,newNode.y,self.goal.x,self.goal.y) < 5
+                found = self.distance(newNode.x,newNode.y,goal.x,goal.y) < 10
                 if found:
                     node_goal = newNode
             i += 1
@@ -167,16 +168,18 @@ class dinamic_obstacle_avoidance:
         return self.generate_solution(node_goal)
     
     def update_map(self):
-        dilate = 5
+        dilate = 10
         self.DynamicMap = np.zeros((120,180))
         self.screen.fill((20, 20, 40))
+        x_drone = int((self.mav.drone_pose.pose.position.x)/ 0.05)
+        y_drone = int((self.mav.drone_pose.pose.position.y + 4.5)/ 0.05)
+        pygame.draw.circle(self.screen,(0,0,240),(x_drone,y_drone),5)
         if self.current_solution != []:
             for point in range(len(self.current_solution)-1):
                 pygame.draw.line(self.screen, (0,240,0), (self.current_solution[point].x,self.current_solution[point].y),(self.current_solution[point+1].x,self.current_solution[point+1].y))
         for obstacle in self.old_obstacles:
             pygame.draw.circle(self.screen,(240,0,0),(obstacle.x,obstacle.y),dilate)
         self.old_obstacles = []
-        pygame.display.update()
         cylinders = self.cyl.get_cylinders_xy_and_radius(self.laser_data.ranges)
         for i in range(len(cylinders)):
             x = int((cylinders[i].cx + self.mav.drone_pose.pose.position.x)/ 0.05)
@@ -186,7 +189,13 @@ class dinamic_obstacle_avoidance:
             if x > 120 or y > 180 or x < 0 or y < 0:
                 continue
             self.DynamicMap[x-1][y-1] = 100
-        self.DynamicMap = morphology.grey_dilation(self.DynamicMap, size=(int(dilate*4),int(dilate*4)))
+        self.DynamicMap = morphology.grey_dilation(self.DynamicMap, size=(int(dilate*2),int(dilate*6)))
+        while self.DynamicMap[x_drone][y_drone] == 100.0:
+            print("emergency override")
+            x_drone = int((self.mav.drone_pose.pose.position.x)/ 0.05)
+            y_drone = int((self.mav.drone_pose.pose.position.y + 4.5)/ 0.05)
+            self.override()
+        pygame.display.update()
 
         #import matplotlib.pyplot as plt
         #plt.imshow(self.DynamicMap, cmap='hot', interpolation='nearest')
@@ -204,10 +213,12 @@ class dinamic_obstacle_avoidance:
                 while self.collision(current,self.DynamicMap):
                     i += 1
                     current = self.current_solution[num + i]
-                pygame.draw.circle(self.screen,(240,0,0),(self.current_solution[num-1].x,self.current_solution[num-1].y),2)
+                current = self.current_solution[num + i + 1]
+                pygame.draw.circle(self.screen,(240,0,0),(self.current_solution[num-2].x,self.current_solution[num-2].y),2)
                 pygame.draw.circle(self.screen,(240,0,0),(current.x,current.y),2)
+                self.cut1 = num-2
+                self.cut2 = num + i + 1
                 pygame.display.update()
-                print("AAAAAAAA")
                 return True
         return False
 
@@ -265,33 +276,40 @@ class dinamic_obstacle_avoidance:
         print("going for next node")
         x = self.current_solution[0].x * 0.05
         y = self.current_solution[0].y *0.05 - 4.5
-        
-        self.mav.set_position(x, y, 1)
-        time.sleep(0.25)
-        
+        while self.distance(self.mav.drone_pose.pose.position.x,self.mav.drone_pose.pose.position.y,x,y) > 1:
+            self.mav.set_position(x, y, 1)
+    
+    def stitch(self):
+        aux1 = self.current_solution[:self.cut1]
+        aux2 = self.current_solution[self.cut2:]
+        middle = self.rrt_star_fn(self.current_solution[self.cut1],self.current_solution[self.cut2], 1500, True)
+
+        aux1.extend(middle)
+        aux1.extend(aux2)
+        self.current_solution = aux1
+    
+    def override(self):
+        self.mav.set_vel(3,0,0)
+    
+
     def dynamic_rrt(self):
-        mav.hold(0.1)
-        self.current_solution = self.rrt_star_fn(self.node(0,90))
+        self.mav.hold(0.05)
+        self.current_solution = self.rrt_star_fn(self.node(0,90), self.goal)
         while self.distance(self.current_solution[0].x,self.current_solution[0].y,self.goal.x,self.goal.y) > 5 and not rospy.is_shutdown():
-            pygame.display.update()
             self.update_map()
-            if self.CollisionInPath(99):
-                print("deleting old ones")
-                for nodes in self.old_path_nodes:
-                    print("a")
-                    if nodes in self.nodeList:
-                        self.DeleteBranch(nodes)
+            if self.CollisionInPath(3):
+                self.mav.hold(0.1)
                 print("recalculating...")
-                #self.current_solution = self.rrt_star_fn(self.current_solution[0], 1000)
+                self.stitch()
                 print("new path acquired")
                 continue
-            #self.nextNode()
+            self.nextNode()
         print("complete!")
 
 if __name__ == "__main__":
     rospy.init_node("dynamic_avoidance")
     from mavbase.MAV import MAV
     mav = MAV("1")
-    #mav.takeoff(1)
+    mav.takeoff(1)
     doa = dinamic_obstacle_avoidance((110,90),mav)
     doa.dynamic_rrt()
