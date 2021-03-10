@@ -189,12 +189,8 @@ class dinamic_obstacle_avoidance:
             if x > 120 or y > 180 or x < 0 or y < 0:
                 continue
             self.DynamicMap[x-1][y-1] = 100
-        self.DynamicMap = morphology.grey_dilation(self.DynamicMap, size=(int(dilate*2),int(dilate*6)))
-        while self.DynamicMap[x_drone][y_drone] == 100.0:
-            print("emergency override")
-            x_drone = int((self.mav.drone_pose.pose.position.x)/ 0.05)
-            y_drone = int((self.mav.drone_pose.pose.position.y + 4.5)/ 0.05)
-            self.override()
+        self.DynamicMap = morphology.grey_dilation(self.DynamicMap, size=(int(dilate),int(dilate*4)))
+
         pygame.display.update()
 
         #import matplotlib.pyplot as plt
@@ -276,8 +272,14 @@ class dinamic_obstacle_avoidance:
         print("going for next node")
         x = self.current_solution[0].x * 0.05
         y = self.current_solution[0].y *0.05 - 4.5
-        while self.distance(self.mav.drone_pose.pose.position.x,self.mav.drone_pose.pose.position.y,x,y) > 1:
-            self.mav.set_position(x, y, 1)
+
+        speed_mult = 2.2
+        while self.distance(self.mav.drone_pose.pose.position.x,self.mav.drone_pose.pose.position.y,x,y) > 0.4:
+            vel_vector = (x - self.mav.drone_pose.pose.position.x, y - self.mav.drone_pose.pose.position.y)
+            vel_vector = (vel_vector[0] / math.sqrt(vel_vector[0]**2 + vel_vector[1]**2), vel_vector[1] / math.sqrt(vel_vector[0]**2 + vel_vector[1]**2))
+            vel_vector = (vel_vector[0] * speed_mult, vel_vector[1] * speed_mult)
+            #print(vel_vector)
+            self.mav.set_vel(vel_vector[0],vel_vector[1],0)
     
     def stitch(self):
         aux1 = self.current_solution[:self.cut1]
@@ -297,11 +299,19 @@ class dinamic_obstacle_avoidance:
         self.current_solution = self.rrt_star_fn(self.node(0,90), self.goal)
         while self.distance(self.current_solution[0].x,self.current_solution[0].y,self.goal.x,self.goal.y) > 5 and not rospy.is_shutdown():
             self.update_map()
-            if self.CollisionInPath(3):
+
+            x_drone = int((self.mav.drone_pose.pose.position.x)/ 0.05)
+            y_drone = int((self.mav.drone_pose.pose.position.y + 4.5)/ 0.05)
+            while self.DynamicMap[x_drone][y_drone] == 100.0:
+                print("emergency override")
+                x_drone = int((self.mav.drone_pose.pose.position.x)/ 0.05)
+                y_drone = int((self.mav.drone_pose.pose.position.y + 4.5)/ 0.05)
+                self.override()
+            
+            if self.CollisionInPath(4):
                 self.mav.hold(0.1)
-                print("recalculating...")
-                self.stitch()
-                print("new path acquired")
+                self.mav.set_vel(0,0,0)
+                #self.stitch()
                 continue
             self.nextNode()
         print("complete!")
